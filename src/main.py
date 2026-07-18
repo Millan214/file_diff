@@ -41,11 +41,18 @@ def _run_one_layer(
     gate: Any,
     *run_args: Any,
 ) -> str:
-    """``run -> record -> export -> report -> gate.decide``, in that fixed order."""
+    """``run -> export -> report -> record -> gate.decide``, in that fixed order.
+
+    ``record`` runs only after both artifacts are on disk, so a crash during
+    ``export``/``report`` leaves the layer *unrecorded* rather than recorded in
+    ``manifest.json`` with a ``csv`` path pointing at a file that was never
+    written. Downstream layers still see this layer's result: ``record``
+    completes before this function returns, i.e. before the next layer runs.
+    """
     result = run(*run_args)
-    ctx.record(result)
     export(result, ctx)
     report(result, ctx)
+    ctx.record(result)
     return gate.decide(result.verdict)
 
 

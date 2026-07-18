@@ -37,29 +37,32 @@ Edit [src/config/config.py](src/config/config.py):
 uv run python -m src.main
 ```
 
-This writes a timestamped execution folder under `data/` (artifacts per layer,
-`manifest.json`) and rebuilds `data/executions.json`. The process exit code
-summarizes the outcome:
+This writes a timestamped execution folder under `data/executions/` (artifacts
+per layer, `manifest.json`) and rebuilds `data/executions/executions.json`. The
+exit code is the position of the **first layer whose verdict was not `success`**
+(a summary — `manifest.json` has the full per-layer detail), so a layer that
+`completed-with-differences` sets its exit code just as a hard failure does:
 
 | Exit | Meaning                                                                    |
 |------|----------------------------------------------------------------------------|
 | `0`  | All layers passed (accepted-only value diffs still count as passed)        |
 | `1`  | Layer 1 — read failure (missing/undecodable/incompatible files)            |
-| `2`  | Layer 2 — no common columns / missing key column                           |
+| `2`  | Layer 2 — column differences (extra/missing/dtype), or no common columns / missing key column |
 | `3`  | Layer 3 — row differences or duplicate keys                                |
 | `4`  | Layer 4 — non-accepted value differences                                   |
 | `5`  | Unexpected crash (a `manifest.json` with `crashed: true` is still written) |
 
 ## View the dashboard
 
-The dashboard reads `data/` over HTTP — opening it via `file://` is
-unsupported. Serve from the **repo root**:
+The dashboard reads `data/executions/` over HTTP — opening it via `file://` is
+unsupported. Serve from the **repo root** with the helper script:
 
 ```bash
-uv run python -m http.server 8000
+uv run python serve.py        # serves the repo root on :8000
 ```
 
-Then open <http://localhost:8000/src/main.html>.
+(or plain `uv run python -m http.server 8000` from the repo root). Then open
+<http://localhost:8000/src/main.html>.
 
 The dashboard lists every execution (newest first), shows each layer's verdict,
 summary, charts, and full detail table with Excel-like sorting/filtering.

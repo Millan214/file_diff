@@ -21,7 +21,7 @@ dashboard (`main.html`) browses all executions.
 
 ## Artifacts per layer
 
-Every layer writes into `data/execution=<timestamp>/layer_N_<name>/`:
+Every layer writes into `data/executions/execution=<timestamp>/layer_N_<name>/`:
 
 - `layer_N_<name>.csv` — machine-readable result data.
 - `layer_N_<name>.txt` — the same data as a human-readable fixed-width table.
@@ -57,16 +57,19 @@ content. Details: `.claude/docs/dashboard.md`.
 ```
 /root
   pyproject.toml            # uv-managed
+  serve.py                  # serves the repo root for the dashboard (D6)
   /docs
     /layer_4_compare_values/accepted_differences.csv
   /data
     /input/file1.csv, file2.csv
-    /execution=<YYYY-MM-DD_HH-MM-SS>/
-      manifest.json
-      /layer_1_read/            layer_1_read.{csv,txt,pdf}
-      /layer_2_compare_columns/ layer_2_compare_columns.{csv,txt,pdf}
-      /layer_3_compare_rows/    layer_3_compare_rows.{csv,txt,pdf}
-      /layer_4_compare_values/  layer_4_compare_values.{csv,txt,pdf}
+    /executions
+      executions.json
+      /execution=<YYYY-MM-DD_HH-MM-SS>/
+        manifest.json
+        /layer_1_read/            layer_1_read.{csv,txt,pdf}
+        /layer_2_compare_columns/ layer_2_compare_columns.{csv,txt,pdf}
+        /layer_3_compare_rows/    layer_3_compare_rows.{csv,txt,pdf}
+        /layer_4_compare_values/  layer_4_compare_values.{csv,txt,pdf}
   /src
     main.py                 # orchestrator + CLI
     main.html               # dashboard
