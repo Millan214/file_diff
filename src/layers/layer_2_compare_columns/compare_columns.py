@@ -79,10 +79,13 @@ def column_verdict(
 ) -> Verdict:
     """success / completed-with-differences / failed (D2, D5, D7).
 
-    ``failed`` when the common set is empty or any configured key column
-    (D2) is missing from it -- layer 3 could not build row keys otherwise.
+    ``failed`` when no key columns are configured, the common set is empty, or
+    any configured key column (D2) is missing from it -- layer 3 could not
+    build row keys in any of those cases. Failing here (a clean STOP, exit 2)
+    keeps a mis-authored config from crashing layers 3/4, which read
+    ``config.KEY_COLUMNS`` directly.
     """
-    if not cols["common"] or any(k not in cols["common"] for k in key_columns):
+    if not key_columns or not cols["common"] or any(k not in cols["common"] for k in key_columns):
         return "failed"
     if cols["left_only"] or cols["right_only"] or not bool(dtypes["dtype_match"].all()):
         return "completed-with-differences"

@@ -228,9 +228,9 @@
 // this page lives (/src/main.html).
 // ---------------------------------------------------------------------------
 const PATHS = {
-  index: "/data/executions.json",
-  manifest: (id) => `/data/${id}/manifest.json`,
-  layerCsv: (id, rel) => `/data/${id}/${rel}`,
+  index: "/data/executions/executions.json",
+  manifest: (id) => `/data/executions/${id}/manifest.json`,
+  layerCsv: (id, rel) => `/data/executions/${id}/${rel}`,
   accepted: "/docs/layer_4_compare_values/accepted_differences.csv",
 };
 
@@ -291,16 +291,13 @@ function clear(node) { while (node.firstChild) node.removeChild(node.firstChild)
 // ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
-async function fetchJSON(url) {
+async function fetchOk(url) {
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
-  return r.json();
+  return r;
 }
-async function fetchText(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
-  return r.text();
-}
+async function fetchJSON(url) { return (await fetchOk(url)).json(); }
+async function fetchText(url) { return (await fetchOk(url)).text(); }
 
 // ---------------------------------------------------------------------------
 // Hand-rolled CSV parser (no CDN libs, dashboard.md). Handles quoted fields,
@@ -357,9 +354,22 @@ async function boot() {
 }
 
 async function loadIndex(pickNewest) {
+  state.error = null;
+  let index;
   try {
-    state.error = null;
-    state.executions = await fetchJSON(PATHS.index);
+    index = await fetchJSON(PATHS.index);
+  } catch (err) {
+    // A missing index is the fresh-repo case (pipeline never run) — not an
+    // error. Show the "no executions yet" empty state rather than a scary
+    // fetch-failure message.
+    state.executions = [];
+    state.currentId = null;
+    state.manifest = null;
+    render();
+    return;
+  }
+  try {
+    state.executions = index;
     state.accepted = await loadAccepted();
     if (!state.executions.length) { state.currentId = null; state.manifest = null; render(); return; }
     const stillExists = state.executions.some((e) => e.id === state.currentId);
@@ -389,12 +399,16 @@ async function selectExecution(id) {
   state.currentId = id;
   state.csvCache = {};
   state.tables = {};
+  state.error = null;               // clear any prior load error before switching
   try {
-    state.manifest = await fetchJSON(PATHS.manifest(id));
+    const manifest = await fetchJSON(PATHS.manifest(id));
+    if (state.currentId !== id) return;   // a newer selection superseded this fetch
+    state.manifest = manifest;
     // Default to the first layer that actually ran, else layer 1.
-    const ran = LAYERS.map((l) => l.key).filter((k) => state.manifest.layers[k]);
+    const ran = LAYERS.map((l) => l.key).filter((k) => manifest.layers[k]);
     state.activeLayer = ran[0] || "layer_1_read";
   } catch (err) {
+    if (state.currentId !== id) return;
     state.manifest = null;
     state.error = String(err.message || err);
   }
@@ -405,8 +419,11 @@ async function ensureCsv(layerKey) {
   if (state.csvCache[layerKey]) return state.csvCache[layerKey];
   const meta = state.manifest.layers[layerKey];
   if (!meta || !meta.csv) return null;
-  const parsed = parseCSV(await fetchText(PATHS.layerCsv(state.currentId, meta.csv)));
-  state.csvCache[layerKey] = parsed;
+  const id = state.currentId;
+  const parsed = parseCSV(await fetchText(PATHS.layerCsv(id, meta.csv)));
+  // Only cache if we're still on the same execution — otherwise a slow fetch
+  // from a previous execution would poison the newly-selected one's cache.
+  if (state.currentId === id) state.csvCache[layerKey] = parsed;
   return parsed;
 }
 
@@ -492,12 +509,23 @@ function renderContent() {
   if (!state.executions.length) {
     content.appendChild(h("div", { class: "msg" },
       h("p", { text: "No executions found yet." }),
-      h("p", { html: "Run the pipeline (<code>uv run python -m src.main</code>), then Refresh." })));
+      h("p", { html: "Run the pipeline (<code>uv run python -m src.main</code>), then Refresh." }),
+      h("p", { html: "If you have run it, make sure you are serving from the repo root: <code>uv run python -m http.server 8000</code>." })));
     return;
   }
   if (!state.manifest) {
     content.appendChild(h("div", { class: "msg", text: "Loading…" }));
     return;
+  }
+
+  // Crash notice: the pipeline hit an unexpected exception (manifest carries a
+  // top-level crashed/error pair, exit code 5). Surface it prominently — the
+  // layers below show whatever completed before the crash.
+  if (state.manifest.crashed) {
+    content.appendChild(h("div", { class: "banner failed" },
+      h("span", { class: "dot failed" }),
+      h("span", { class: "verdict-text", text: "Crashed" }),
+      h("span", { class: "verdict-sub", text: state.manifest.error || "The pipeline stopped on an unexpected error." })));
   }
 
   const layerKey = state.activeLayer;
@@ -641,6 +669,11 @@ function getTableState(layerKey, columns) {
   return state.tables[layerKey];
 }
 
+// Set to a column key when a debounced column-search rebuild is pending, so the
+// rebuilt table can restore keyboard focus to that search box (otherwise typing
+// is interrupted every time the debounce fires and recreates the input).
+let pendingSearchFocus = null;
+
 async function renderTable(layerKey, host) {
   clear(host);
   host.appendChild(h("div", { class: "msg", text: "Loading table…" }));
@@ -667,8 +700,10 @@ async function renderTable(layerKey, host) {
       const cell = row[col] == null ? "" : String(row[col]);
       const q = (ts.search[col] || "").trim().toLowerCase();
       if (q && !cell.toLowerCase().includes(q)) return false;
-      const set = ts.filters[col];
-      if (set && !set.has(cell)) return false;
+      // filters[col] is an *exclude* set of values the user unchecked; values
+      // beyond the distinct-value cap are never in it, so they are always kept.
+      const excluded = ts.filters[col];
+      if (excluded && excluded.has(cell)) return false;
     }
     return true;
   });
@@ -683,6 +718,7 @@ async function renderTable(layerKey, host) {
   const paged = total > PAGE_SIZE ? rows.slice(ts.page * PAGE_SIZE, ts.page * PAGE_SIZE + PAGE_SIZE) : rows;
 
   // ---- head ----
+  const searchInputs = {};
   const headCells = parsed.columns.map((col) => {
     const sortInd = ts.sort.col === col ? (ts.sort.dir === 1 ? "▲" : ts.sort.dir === -1 ? "▼" : "") : "";
     const active = !!ts.filters[col] || !!(ts.search[col] && ts.search[col].trim());
@@ -691,12 +727,12 @@ async function renderTable(layerKey, host) {
       h("span", { class: "sort-ind", text: sortInd }),
       h("button", { class: "funnel" + (active ? " active" : ""), title: "Filter", onclick: (e) => openFilterPopup(e, layerKey, host, parsed, col) }, "▾"),
     );
-    const search = h("div", { class: "col-search" },
-      h("input", {
-        type: "text", placeholder: "filter…", value: ts.search[col] || "",
-        oninput: debounce((e) => { ts.search[col] = e.target.value; ts.page = 0; renderTable(layerKey, host); }, 180),
-      }));
-    return h("th", {}, inner, search);
+    const searchInput = h("input", {
+      type: "text", placeholder: "filter…", value: ts.search[col] || "",
+      oninput: debounce((e) => { ts.search[col] = e.target.value; ts.page = 0; pendingSearchFocus = col; renderTable(layerKey, host); }, 180),
+    });
+    searchInputs[col] = searchInput;
+    return h("th", {}, inner, h("div", { class: "col-search" }, searchInput));
   });
 
   // ---- body ----
@@ -720,6 +756,16 @@ async function renderTable(layerKey, host) {
   host.appendChild(h("div", { class: "table-wrap" },
     h("div", { class: "table-scroll" }, table),
     foot));
+
+  // Restore focus to a column-search box after a debounced rebuild so typing
+  // is uninterrupted (the input element was just recreated by clear()).
+  if (pendingSearchFocus && searchInputs[pendingSearchFocus]) {
+    const inp = searchInputs[pendingSearchFocus];
+    inp.focus();
+    const end = inp.value.length;
+    try { inp.setSelectionRange(end, end); } catch (_) { /* number/date inputs */ }
+  }
+  pendingSearchFocus = null;
 }
 
 function renderCell(col, row, isLayer4) {
@@ -794,36 +840,37 @@ function openFilterPopup(ev, layerKey, host, parsed, col) {
   for (const row of parsed.rows) { seen.add(row[col] == null ? "" : String(row[col])); if (seen.size > DISTINCT_CAP) break; }
   const capped = seen.size > DISTINCT_CAP;
   const values = Array.from(seen).sort(cmpCells);
-  const current = ts.filters[col]; // Set or undefined (=all)
 
+  // Working checkbox state, keyed by value, seeded from the stored *exclude*
+  // set (an unchecked value = excluded). Held here — not recomputed from the
+  // stored filter — so toggles survive re-rendering the list while searching.
+  const excludedNow = ts.filters[col];   // Set of excluded values, or undefined
+  const working = new Map();
+  for (const v of values) working.set(v, excludedNow ? !excludedNow.has(v) : true);
+
+  let searchText = "";
   const listHost = h("div", { class: "p-list" });
-  const checkboxes = new Map();
-  const renderList = (filterText) => {
+  const renderList = () => {
     clear(listHost);
-    const ft = (filterText || "").toLowerCase();
+    const ft = searchText.toLowerCase();
     for (const v of values) {
       if (ft && !v.toLowerCase().includes(ft)) continue;
-      const checked = current ? current.has(v) : true;
-      const cb = h("input", { type: "checkbox", checked: checked ? "checked" : null });
-      checkboxes.set(v, cb);
+      const cb = h("input", {
+        type: "checkbox",
+        checked: working.get(v) ? "checked" : null,
+        onchange: (e) => working.set(v, e.target.checked),
+      });
       listHost.appendChild(h("label", {}, cb, h("span", { text: v === "" ? "(empty)" : v })));
     }
   };
-  renderList("");
+  renderList();
 
-  const search = h("input", { class: "p-search", type: "text", placeholder: "Search values…", oninput: (e) => renderList(e.target.value) });
+  const setAll = (checked) => { for (const v of values) working.set(v, checked); renderList(); };
+  const search = h("input", { class: "p-search", type: "text", placeholder: "Search values…", oninput: (e) => { searchText = e.target.value; renderList(); } });
   const apply = h("button", { class: "p-apply", onclick: () => {
-    const chosen = new Set();
-    // Only iterate currently-rendered checkboxes; unrendered (search-hidden)
-    // values keep their prior state.
-    let anyRendered = false;
-    for (const [v, cb] of checkboxes) { anyRendered = true; if (cb.checked) chosen.add(v); }
-    // Merge: start from current effective set, then apply the rendered subset.
-    const effective = current ? new Set(current) : new Set(values);
-    if (anyRendered) {
-      for (const [v, cb] of checkboxes) { if (cb.checked) effective.add(v); else effective.delete(v); }
-    }
-    ts.filters[col] = effective.size === values.length ? null : effective;
+    // Store the set of unchecked values as the exclude filter (null if none).
+    const excluded = new Set(values.filter((v) => working.get(v) === false));
+    ts.filters[col] = excluded.size ? excluded : null;
     ts.page = 0;
     closePopup();
     renderTable(layerKey, host);
@@ -832,12 +879,12 @@ function openFilterPopup(ev, layerKey, host, parsed, col) {
   const pop = h("div", { class: "popup filter-popup", onmousedown: (e) => e.stopPropagation() },
     search,
     h("div", { class: "p-actions" },
-      h("button", { onclick: () => { for (const cb of checkboxes.values()) cb.checked = true; } }, "Select all"),
-      h("button", { onclick: () => { for (const cb of checkboxes.values()) cb.checked = false; } }, "Clear"),
-      current ? h("button", { onclick: () => { delete ts.filters[col]; ts.page = 0; closePopup(); renderTable(layerKey, host); } }, "Reset column") : null,
+      h("button", { onclick: () => setAll(true) }, "Select all"),
+      h("button", { onclick: () => setAll(false) }, "Clear"),
+      excludedNow ? h("button", { onclick: () => { delete ts.filters[col]; ts.page = 0; closePopup(); renderTable(layerKey, host); } }, "Reset column") : null,
     ),
     listHost,
-    capped ? h("div", { class: "p-note", text: `Showing first ${DISTINCT_CAP} distinct values.` }) : null,
+    capped ? h("div", { class: "p-note", text: `Showing first ${DISTINCT_CAP} distinct values; values beyond the cap are always kept.` }) : null,
     apply,
   );
   placePopup(pop, ev.currentTarget);

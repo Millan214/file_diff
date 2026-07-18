@@ -5,8 +5,6 @@ Layer modules and the orchestrator should import from here (or from
 into the individual submodules directly, so the internal module layout can
 change without breaking callers.
 
-``pdf.py`` (``ReportBuilder``, chart helpers) is implemented separately and
-re-exported here once available.
 """
 
 from __future__ import annotations
@@ -30,6 +28,7 @@ from src.utils.keys import (
     key_frame,
     unique_keys,
 )
+from src.utils.pdf import ReportBuilder, barh_chart
 
 __all__ = [
     # artifacts.py
@@ -50,4 +49,7 @@ __all__ = [
     "duplicate_mask",
     "key_frame",
     "unique_keys",
+    # pdf.py
+    "ReportBuilder",
+    "barh_chart",
 ]
