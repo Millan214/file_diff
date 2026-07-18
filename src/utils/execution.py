@@ -45,6 +45,11 @@ LAYER_NAMES: tuple[str, ...] = (
 
 _TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
+#: Reserved exit code for an unexpected exception escaping the pipeline
+#: (architecture.md's error-handling section). D11 only ever assigns 0-4 (one
+#: per layer position, ``len(LAYER_NAMES)``), so this is guaranteed free.
+CRASHED_EXIT_CODE = len(LAYER_NAMES) + 1
+
 
 @dataclass
 class LayerResult:
@@ -137,6 +142,7 @@ class ExecutionContext:
     input_hash: str
     layer_dirs: dict[str, Path]
     results: dict[str, LayerResult] = field(default_factory=dict)
+    crash_error: str | None = None
 
     @classmethod
     def create(cls, config: Any, now: datetime | None = None) -> "ExecutionContext":
@@ -187,14 +193,26 @@ class ExecutionContext:
         """Store a layer's result, keyed by its name."""
         self.results[result.name] = result
 
+    def mark_crashed(self, error: str) -> None:
+        """Record that an unexpected exception escaped the pipeline (architecture.md).
+
+        Overrides :meth:`exit_code` (-> ``CRASHED_EXIT_CODE``) and adds a
+        top-level ``crashed``/``error`` pair to the manifest, on top of
+        whatever layers were recorded before the crash.
+        """
+        self.crash_error = error
+
     def exit_code(self) -> int:
         """D11: number of the first layer whose verdict was not ``success``.
 
         ``completed-with-differences`` counts as "not success" here even
         though the pipeline gate continues past it (D1/D5) — the exit code
         is a compact summary, not the full story; per-layer verdicts in the
-        manifest carry the detail.
+        manifest carry the detail. An unexpected crash (:meth:`mark_crashed`)
+        takes priority over this and always returns ``CRASHED_EXIT_CODE``.
         """
+        if self.crash_error is not None:
+            return CRASHED_EXIT_CODE
         for position, layer_name in enumerate(LAYER_NAMES, start=1):
             result = self.results.get(layer_name)
             if result is None:
@@ -224,7 +242,7 @@ class ExecutionContext:
                 "summary": result.extras.get("summary", {}),
             }
 
-        return {
+        manifest: dict[str, Any] = {
             "execution_id": self.execution_id,
             "created": self.created_at.isoformat(timespec="seconds"),
             "input_hash": self.input_hash,
@@ -232,6 +250,10 @@ class ExecutionContext:
             "exit_code": self.exit_code(),
             "layers": layers,
         }
+        if self.crash_error is not None:
+            manifest["crashed"] = True
+            manifest["error"] = self.crash_error
+        return manifest
 
     def write_manifest(self) -> Path:
         """Write ``manifest.json`` and rebuild ``data/executions.json``."""

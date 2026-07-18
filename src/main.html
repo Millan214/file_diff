@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>compare-dataframes — dashboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='2' width='6' height='12' rx='1' fill='%232563eb'/%3E%3Crect x='9' y='2' width='6' height='12' rx='1' fill='%2316a34a'/%3E%3C/svg%3E" />
+<style>
+  /* ---- Theme tokens (light default, dark via prefers-color-scheme) ---- */
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #f0f2f5;
+    --border: #e2e5ea;
+    --text: #1c2430;
+    --text-dim: #5b6472;
+    --accent: #2563eb;
+    --shadow: 0 1px 3px rgba(16, 24, 40, 0.08), 0 1px 2px rgba(16, 24, 40, 0.06);
+
+    --v-success: #16a34a;
+    --v-diff: #d97706;
+    --v-failed: #dc2626;
+    --v-none: #9ca3af;
+
+    --bar: #2563eb;
+    --bar-grey: #9ca3af;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420;
+      --panel: #161c28;
+      --panel-2: #1d2634;
+      --border: #2a3444;
+      --text: #e6eaf1;
+      --text-dim: #9aa5b5;
+      --accent: #5b8bff;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+      --v-success: #34d17f;
+      --v-diff: #f0a838;
+      --v-failed: #f8716a;
+      --v-none: #6b7686;
+
+      --bar: #5b8bff;
+      --bar-grey: #6b7686;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  a { color: var(--accent); }
+
+  #app { display: grid; grid-template-columns: 232px 1fr; height: 100vh; }
+
+  /* ---- Sidebar ---- */
+  .sidebar {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 18px 14px;
+    overflow-y: auto;
+  }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: .2px; margin: 0 8px 4px; }
+  .brand small { display: block; font-weight: 500; color: var(--text-dim); font-size: 11px; margin-top: 2px; }
+  .nav { list-style: none; margin: 18px 0 0; padding: 0; }
+  .nav li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px; border-radius: 8px; margin-bottom: 2px;
+    cursor: pointer; user-select: none;
+  }
+  .nav li:hover { background: var(--panel-2); }
+  .nav li.active { background: var(--panel-2); font-weight: 600; }
+  .nav li.disabled { opacity: .55; cursor: default; }
+  .nav li.disabled:hover { background: none; }
+  .nav .label { flex: 1; font-size: 13px; }
+  .nav .idx { color: var(--text-dim); font-size: 11px; width: 14px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--v-none); flex: none; }
+  .dot.success { background: var(--v-success); }
+  .dot.diff { background: var(--v-diff); }
+  .dot.failed { background: var(--v-failed); }
+  .dot.none { background: var(--v-none); }
+
+  /* ---- Main ---- */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 22px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  .header .exec-meta { display: flex; flex-direction: column; min-width: 0; }
+  .header .exec-id { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header .exec-date { color: var(--text-dim); font-size: 12px; }
+  .header .spacer { flex: 1; }
+  .header select, .header button.refresh {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; color: var(--text);
+  }
+  .header select { max-width: 340px; }
+  .header button.refresh:hover { border-color: var(--accent); }
+  .exit-pill {
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    background: var(--panel-2); border: 1px solid var(--border);
+  }
+  .exit-pill.ok { color: var(--v-success); border-color: color-mix(in srgb, var(--v-success) 40%, var(--border)); }
+  .exit-pill.bad { color: var(--v-failed); border-color: color-mix(in srgb, var(--v-failed) 40%, var(--border)); }
+
+  .content { padding: 22px; overflow: auto; flex: 1; }
+
+  .banner {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px; border-radius: 10px; margin-bottom: 20px;
+    border: 1px solid var(--border); background: var(--panel);
+    border-left-width: 5px;
+  }
+  .banner.success { border-left-color: var(--v-success); }
+  .banner.diff { border-left-color: var(--v-diff); }
+  .banner.failed { border-left-color: var(--v-failed); }
+  .banner.none { border-left-color: var(--v-none); }
+  .banner .verdict-text { font-weight: 600; text-transform: capitalize; }
+  .banner .verdict-sub { color: var(--text-dim); }
+
+  h2.section { font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-dim); margin: 26px 0 12px; }
+
+  .tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+  .tile {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; min-width: 120px; box-shadow: var(--shadow);
+  }
+  .tile .k { font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--text-dim); }
+  .tile .val { font-size: 22px; font-weight: 700; margin-top: 2px; }
+
+  /* ---- Chart ---- */
+  .chart { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); }
+  .chart svg { width: 100%; display: block; }
+  .chart .bar-label { fill: var(--text); font-size: 12px; }
+  .chart .bar-value { fill: var(--text-dim); font-size: 12px; }
+  .chart rect.bar { fill: var(--bar); }
+  .chart rect.bar.grey { fill: var(--bar-grey); cursor: pointer; }
+  .chart rect.bar.grey:hover { opacity: .8; }
+  .chart .legend { display: flex; gap: 18px; margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+  .chart .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .chart .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+  /* ---- Table ---- */
+  .table-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; background: var(--panel-2);
+    text-align: left; padding: 0; border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  th .th-inner { display: flex; align-items: center; gap: 6px; padding: 9px 12px; }
+  th .th-label { cursor: pointer; user-select: none; font-weight: 600; }
+  th .sort-ind { color: var(--text-dim); font-size: 11px; width: 10px; }
+  th .funnel {
+    margin-left: auto; border: none; background: none; padding: 2px 4px; border-radius: 5px;
+    color: var(--text-dim); line-height: 1;
+  }
+  th .funnel:hover { background: var(--border); }
+  th .funnel.active { color: var(--accent); }
+  th .col-search { display: block; }
+  th .col-search input {
+    width: 100%; box-sizing: border-box; border: none; border-top: 1px solid var(--border);
+    background: var(--panel); color: var(--text); padding: 6px 12px; font: inherit; font-size: 12px;
+  }
+  th .col-search input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: -2px; }
+  tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--panel-2); }
+
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+  .badge.accepted { color: var(--v-diff); border-color: color-mix(in srgb, var(--v-diff) 45%, var(--border)); cursor: pointer; }
+  .badge.plain { color: var(--text-dim); }
+  .cell-bool-true { color: var(--v-success); }
+  .cell-bool-false { color: var(--v-failed); }
+
+  .table-foot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 12px; }
+  .table-foot .spacer { flex: 1; }
+  .pager button { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; margin-left: 6px; }
+  .pager button:disabled { opacity: .4; cursor: default; }
+
+  /* ---- Popups ---- */
+  .popup {
+    position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: 0 8px 30px rgba(16, 24, 40, 0.18); padding: 10px; min-width: 220px; max-width: 320px;
+  }
+  .popup .p-search { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); margin-bottom: 8px; }
+  .popup .p-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+  .popup .p-actions button { font-size: 12px; color: var(--accent); background: none; border: none; padding: 0; }
+  .popup .p-list { max-height: 240px; overflow: auto; }
+  .popup label { display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 13px; cursor: pointer; }
+  .popup label input { flex: none; }
+  .popup .p-note { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+  .popup .p-apply { margin-top: 8px; width: 100%; background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 8px; font-weight: 600; }
+  .reason-popup h4 { margin: 0 0 8px; font-size: 14px; }
+  .reason-popup dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  .reason-popup dt { color: var(--text-dim); }
+  .reason-popup dd { margin: 0; word-break: break-word; }
+
+  .msg { padding: 40px; text-align: center; color: var(--text-dim); }
+  .msg code { background: var(--panel-2); padding: 2px 6px; border-radius: 4px; }
+  .msg.err { color: var(--v-failed); }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside class="sidebar">
+    <div class="brand">compare-dataframes<small>pipeline dashboard</small></div>
+    <ul class="nav" id="nav"></ul>
+  </aside>
+  <div class="main">
+    <div class="header" id="header"></div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Config / paths.  Served from the repo root (dashboard.md), so data/ and
+// docs/ are addressed absolutely from the server root regardless of where
+// this page lives (/src/main.html).
+// ---------------------------------------------------------------------------
+const PATHS = {
+  index: "/data/executions.json",
+  manifest: (id) => `/data/${id}/manifest.json`,
+  layerCsv: (id, rel) => `/data/${id}/${rel}`,
+  accepted: "/docs/layer_4_compare_values/accepted_differences.csv",
+};
+
+const LAYERS = [
+  { key: "layer_1_read", label: "Read" },
+  { key: "layer_2_compare_columns", label: "Compare Columns" },
+  { key: "layer_3_compare_rows", label: "Compare Rows" },
+  { key: "layer_4_compare_values", label: "Compare Values" },
+];
+
+const PAGE_SIZE = 100;          // paginate past this many rows (dashboard.md)
+const DISTINCT_CAP = 1000;      // cap the filter checklist (dashboard.md)
+
+const VERDICT = {
+  "success": { cls: "success", sub: "No differences." },
+  "completed-with-differences": { cls: "diff", sub: "Completed, with differences." },
+  "failed": { cls: "failed", sub: "Comparison failed." },
+};
+function verdictClass(v) { return v ? (VERDICT[v] ? VERDICT[v].cls : "none") : "none"; }
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+const state = {
+  executions: [],       // [{id, date, exit_code}]
+  currentId: null,
+  manifest: null,
+  activeLayer: "layer_1_read",
+  csvCache: {},         // layerKey -> {columns, rows} for the current manifest
+  accepted: {},         // column -> {reason, example_left, example_right}
+  tables: {},           // layerKey -> {sort:{col,dir}, filters:{col:Set|null}, search:{col:str}, page:int}
+  error: null,
+};
+
+// ---------------------------------------------------------------------------
+// Tiny DOM helper — builds elements safely (text via textContent, never
+// innerHTML with data), so CSV / manifest content can never inject markup.
+// ---------------------------------------------------------------------------
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k === "text") e.textContent = v;
+    else if (k === "html") e.innerHTML = v;             // only used with static strings
+    else if (k.startsWith("on") && typeof v === "function") e.addEventListener(k.slice(2), v);
+    else if (k === "style") e.setAttribute("style", v);
+    else e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) {
+    if (kid == null) continue;
+    e.appendChild(typeof kid === "string" ? document.createTextNode(kid) : kid);
+  }
+  return e;
+}
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+// ---------------------------------------------------------------------------
+// Fetch helpers
+// ---------------------------------------------------------------------------
+async function fetchJSON(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+  return r.json();
+}
+async function fetchText(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText} for ${url}`);
+  return r.text();
+}
+
+// ---------------------------------------------------------------------------
+// Hand-rolled CSV parser (no CDN libs, dashboard.md). Handles quoted fields,
+// embedded commas / newlines / escaped double-quotes. Returns {columns, rows}
+// where each row is an object keyed by column name.
+// ---------------------------------------------------------------------------
+function parseCSV(text) {
+  const rows = [];
+  let field = "", row = [], inQuotes = false;
+  // Normalise newlines but preserve those inside quotes by parsing char-wise.
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field); field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      rows.push(row); row = [];
+    } else field += c;
+  }
+  // Flush trailing field/row (unless the file ended on a clean newline).
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+
+  if (rows.length === 0) return { columns: [], rows: [] };
+  const columns = rows[0];
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    // Skip a stray fully-empty trailing line.
+    if (rows[r].length === 1 && rows[r][0] === "") continue;
+    const obj = {};
+    columns.forEach((col, ci) => { obj[col] = rows[r][ci] !== undefined ? rows[r][ci] : ""; });
+    out.push(obj);
+  }
+  return { columns, rows: out };
+}
+
+// ---------------------------------------------------------------------------
+// Boot + data loading
+// ---------------------------------------------------------------------------
+async function boot() {
+  if (location.protocol === "file:") {
+    state.error = "file";
+    render();
+    return;
+  }
+  await loadIndex(true);
+}
+
+async function loadIndex(pickNewest) {
+  try {
+    state.error = null;
+    state.executions = await fetchJSON(PATHS.index);
+    state.accepted = await loadAccepted();
+    if (!state.executions.length) { state.currentId = null; state.manifest = null; render(); return; }
+    const stillExists = state.executions.some((e) => e.id === state.currentId);
+    const targetId = (pickNewest || !stillExists) ? state.executions[0].id : state.currentId;
+    await selectExecution(targetId);
+  } catch (err) {
+    state.error = String(err.message || err);
+    render();
+  }
+}
+
+async function loadAccepted() {
+  try {
+    const parsed = parseCSV(await fetchText(PATHS.accepted));
+    const map = {};
+    for (const r of parsed.rows) {
+      const col = (r.column || "").trim();
+      if (col) map[col] = { reason: r.reason || "", example_left: r.example_left || "", example_right: r.example_right || "" };
+    }
+    return map;
+  } catch (_) {
+    return {};                 // missing/empty policy file is fine (D3 semantics)
+  }
+}
+
+async function selectExecution(id) {
+  state.currentId = id;
+  state.csvCache = {};
+  state.tables = {};
+  try {
+    state.manifest = await fetchJSON(PATHS.manifest(id));
+    // Default to the first layer that actually ran, else layer 1.
+    const ran = LAYERS.map((l) => l.key).filter((k) => state.manifest.layers[k]);
+    state.activeLayer = ran[0] || "layer_1_read";
+  } catch (err) {
+    state.manifest = null;
+    state.error = String(err.message || err);
+  }
+  render();
+}
+
+async function ensureCsv(layerKey) {
+  if (state.csvCache[layerKey]) return state.csvCache[layerKey];
+  const meta = state.manifest.layers[layerKey];
+  if (!meta || !meta.csv) return null;
+  const parsed = parseCSV(await fetchText(PATHS.layerCsv(state.currentId, meta.csv)));
+  state.csvCache[layerKey] = parsed;
+  return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering — top level
+// ---------------------------------------------------------------------------
+function render() {
+  renderSidebar();
+  renderHeader();
+  renderContent();
+}
+
+function renderSidebar() {
+  const nav = document.getElementById("nav");
+  clear(nav);
+  const layers = state.manifest ? state.manifest.layers : {};
+  LAYERS.forEach((l, i) => {
+    const verdict = layers[l.key] ? layers[l.key].verdict : null;
+    const ran = !!layers[l.key];
+    const li = h("li", {
+      class: [l.key === state.activeLayer ? "active" : "", ran ? "" : "disabled"].join(" ").trim(),
+      onclick: ran ? () => { state.activeLayer = l.key; render(); } : null,
+      title: ran ? "" : "Layer did not run in this execution",
+    },
+      h("span", { class: "idx", text: String(i + 1) }),
+      h("span", { class: "dot " + verdictClass(verdict) }),
+      h("span", { class: "label", text: l.label }),
+    );
+    nav.appendChild(li);
+  });
+}
+
+function renderHeader() {
+  const header = document.getElementById("header");
+  clear(header);
+  if (!state.executions.length) {
+    header.appendChild(h("div", { class: "exec-id", text: "No executions" }));
+    return;
+  }
+  const cur = state.executions.find((e) => e.id === state.currentId);
+  const dateStr = cur ? formatDate(cur.date) : "";
+  const idShort = state.currentId ? state.currentId.replace(/^execution=/, "") : "—";
+
+  const select = h("select", { onchange: (e) => selectExecution(e.target.value) },
+    ...state.executions.map((e) =>
+      h("option", { value: e.id, selected: e.id === state.currentId ? "selected" : null },
+        `${e.id.replace(/^execution=/, "")}  ·  exit ${e.exit_code}`)));
+
+  const exitCode = cur ? cur.exit_code : null;
+  const pill = h("span", { class: "exit-pill " + (exitCode === 0 ? "ok" : "bad"), text: `exit ${exitCode}` });
+
+  header.appendChild(h("div", { class: "exec-meta" },
+    h("div", { class: "exec-id", text: idShort }),
+    h("div", { class: "exec-date", text: dateStr })));
+  header.appendChild(pill);
+  header.appendChild(h("div", { class: "spacer" }));
+  header.appendChild(select);
+  header.appendChild(h("button", { class: "refresh", title: "Re-fetch index + manifest", onclick: () => loadIndex(false) }, "⟳ Refresh"));
+}
+
+function formatDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function renderContent() {
+  const content = document.getElementById("content");
+  clear(content);
+
+  if (state.error === "file") {
+    content.appendChild(h("div", { class: "msg err" },
+      h("p", { html: "This dashboard must be served over HTTP — opening it via <code>file://</code> is unsupported." }),
+      h("p", { html: "From the repo root run <code>uv run python -m http.server 8000</code>, then open <code>http://localhost:8000/src/main.html</code>." })));
+    return;
+  }
+  if (state.error) {
+    content.appendChild(h("div", { class: "msg err" },
+      h("p", { text: "Could not load data: " + state.error }),
+      h("p", { html: "Make sure you are serving from the repo root: <code>uv run python -m http.server 8000</code>." })));
+    return;
+  }
+  if (!state.executions.length) {
+    content.appendChild(h("div", { class: "msg" },
+      h("p", { text: "No executions found yet." }),
+      h("p", { html: "Run the pipeline (<code>uv run python -m src.main</code>), then Refresh." })));
+    return;
+  }
+  if (!state.manifest) {
+    content.appendChild(h("div", { class: "msg", text: "Loading…" }));
+    return;
+  }
+
+  const layerKey = state.activeLayer;
+  const meta = state.manifest.layers[layerKey];
+  const layerLabel = LAYERS.find((l) => l.key === layerKey).label;
+
+  if (!meta) {
+    content.appendChild(h("div", { class: "msg", text: `Layer "${layerLabel}" did not run in this execution.` }));
+    return;
+  }
+
+  // Verdict banner
+  const vc = verdictClass(meta.verdict);
+  content.appendChild(h("div", { class: "banner " + vc },
+    h("span", { class: "dot " + vc }),
+    h("span", { class: "verdict-text", text: (meta.verdict || "not run").replace(/-/g, " ") }),
+    h("span", { class: "verdict-sub", text: VERDICT[meta.verdict] ? VERDICT[meta.verdict].sub : "" })));
+
+  // Summary tiles
+  const tiles = summaryTiles(meta.summary || {});
+  if (tiles.length) {
+    content.appendChild(h("h2", { class: "section", text: "Summary" }));
+    content.appendChild(h("div", { class: "tiles" }, ...tiles));
+  }
+
+  // Charts (layers 3 & 4)
+  if (layerKey === "layer_3_compare_rows") {
+    content.appendChild(h("h2", { class: "section", text: "Row match" }));
+    content.appendChild(rowChart(meta.summary || {}));
+  } else if (layerKey === "layer_4_compare_values") {
+    content.appendChild(h("h2", { class: "section", text: "Differences per column" }));
+    content.appendChild(valueChart(meta.summary || {}));
+  }
+
+  // CSV table
+  content.appendChild(h("h2", { class: "section", text: "Detail" }));
+  const tableHost = h("div");
+  content.appendChild(tableHost);
+  renderTable(layerKey, tableHost);
+}
+
+// ---------------------------------------------------------------------------
+// Summary tiles — scalar summary entries become tiles; arrays/objects are
+// left for the charts.
+// ---------------------------------------------------------------------------
+function summaryTiles(summary) {
+  const tiles = [];
+  for (const [k, v] of Object.entries(summary)) {
+    if (v !== null && typeof v === "object") continue;   // diff_counts etc. -> chart
+    tiles.push(h("div", { class: "tile" },
+      h("div", { class: "k", text: k.replace(/_/g, " ") }),
+      h("div", { class: "val", text: v === null ? "—" : String(v) })));
+  }
+  return tiles;
+}
+
+// ---------------------------------------------------------------------------
+// Charts (inline SVG horizontal bars)
+// ---------------------------------------------------------------------------
+function svgBarChart(items, opts = {}) {
+  // items: [{label, value, grey?, onClick?}]
+  const rowH = 34, padL = 130, padR = 48, top = 8, bottom = 8, w = 720;
+  const max = Math.max(1, ...items.map((it) => it.value));
+  const innerW = w - padL - padR;
+  const height = top + bottom + items.length * rowH;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${height}`);
+  svg.setAttribute("role", "img");
+
+  items.forEach((it, i) => {
+    const y = top + i * rowH;
+    const barLen = Math.round((it.value / max) * innerW);
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("x", padL - 10); label.setAttribute("y", y + rowH / 2 + 4);
+    label.setAttribute("text-anchor", "end"); label.setAttribute("class", "bar-label");
+    label.textContent = it.label;
+    svg.appendChild(label);
+
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("x", padL); rect.setAttribute("y", y + 6);
+    rect.setAttribute("width", Math.max(barLen, it.value > 0 ? 2 : 0));
+    rect.setAttribute("height", rowH - 14); rect.setAttribute("rx", 4);
+    rect.setAttribute("class", "bar" + (it.grey ? " grey" : ""));
+    if (it.onClick) { rect.style.cursor = "pointer"; rect.addEventListener("click", (ev) => it.onClick(ev)); }
+    svg.appendChild(rect);
+
+    const val = document.createElementNS(svgNS, "text");
+    val.setAttribute("x", padL + Math.max(barLen, 2) + 8); val.setAttribute("y", y + rowH / 2 + 4);
+    val.setAttribute("class", "bar-value"); val.textContent = String(it.value);
+    svg.appendChild(val);
+  });
+
+  const wrap = h("div", { class: "chart" }, svg);
+  if (opts.legend) {
+    const legend = h("div", { class: "legend" });
+    for (const lg of opts.legend) legend.appendChild(h("span", {}, h("i", { style: `background:${lg.color}` }), lg.text));
+    wrap.appendChild(legend);
+  }
+  return wrap;
+}
+
+function rowChart(summary) {
+  const cats = [
+    ["left_only", "Left only"], ["inner", "Inner (matched)"],
+    ["right_only", "Right only"], ["duplicates", "Duplicates"],
+  ];
+  const items = cats.map(([k, label]) => ({ label, value: Number(summary[k] || 0) }));
+  return svgBarChart(items);
+}
+
+function valueChart(summary) {
+  const counts = summary.diff_counts || {};
+  const accepted = new Set(summary.accepted_columns || []);
+  const cols = Object.keys(counts);
+  if (!cols.length) {
+    return h("div", { class: "chart" }, h("div", { class: "msg", text: "No value differences across the compared cells." }));
+  }
+  const items = cols.map((c) => ({
+    label: c, value: Number(counts[c]),
+    grey: accepted.has(c),
+    onClick: accepted.has(c) ? (ev) => showReasonPopup(ev, c) : null,
+  }));
+  const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const hasAccepted = items.some((it) => it.grey);
+  const hasOther = items.some((it) => !it.grey);
+  const legend = [];
+  if (hasOther) legend.push({ color: cssVar("--bar"), text: "Not accepted" });
+  if (hasAccepted) legend.push({ color: cssVar("--bar-grey"), text: "Accepted (click for reason)" });
+  return svgBarChart(items, { legend });
+}
+
+// ---------------------------------------------------------------------------
+// Table with Excel-like filtering (sort, per-column search, distinct-value
+// checklist popups combined with AND) and pagination past PAGE_SIZE rows.
+// ---------------------------------------------------------------------------
+function getTableState(layerKey, columns) {
+  if (!state.tables[layerKey]) {
+    state.tables[layerKey] = { sort: { col: null, dir: 0 }, filters: {}, search: {}, page: 0 };
+  }
+  return state.tables[layerKey];
+}
+
+async function renderTable(layerKey, host) {
+  clear(host);
+  host.appendChild(h("div", { class: "msg", text: "Loading table…" }));
+  let parsed;
+  try {
+    parsed = await ensureCsv(layerKey);
+  } catch (err) {
+    clear(host);
+    host.appendChild(h("div", { class: "msg err", text: "Could not load CSV: " + (err.message || err) }));
+    return;
+  }
+  clear(host);
+  if (!parsed || !parsed.columns.length) {
+    host.appendChild(h("div", { class: "msg", text: "No table data." }));
+    return;
+  }
+
+  const ts = getTableState(layerKey, parsed.columns);
+  const isLayer4 = layerKey === "layer_4_compare_values";
+
+  // ---- filter + sort ----
+  let rows = parsed.rows.filter((row) => {
+    for (const col of parsed.columns) {
+      const cell = row[col] == null ? "" : String(row[col]);
+      const q = (ts.search[col] || "").trim().toLowerCase();
+      if (q && !cell.toLowerCase().includes(q)) return false;
+      const set = ts.filters[col];
+      if (set && !set.has(cell)) return false;
+    }
+    return true;
+  });
+  if (ts.sort.col && ts.sort.dir) {
+    const col = ts.sort.col, dir = ts.sort.dir;
+    rows = rows.slice().sort((a, b) => cmpCells(a[col], b[col]) * dir);
+  }
+
+  const total = rows.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (ts.page >= pageCount) ts.page = 0;
+  const paged = total > PAGE_SIZE ? rows.slice(ts.page * PAGE_SIZE, ts.page * PAGE_SIZE + PAGE_SIZE) : rows;
+
+  // ---- head ----
+  const headCells = parsed.columns.map((col) => {
+    const sortInd = ts.sort.col === col ? (ts.sort.dir === 1 ? "▲" : ts.sort.dir === -1 ? "▼" : "") : "";
+    const active = !!ts.filters[col] || !!(ts.search[col] && ts.search[col].trim());
+    const inner = h("div", { class: "th-inner" },
+      h("span", { class: "th-label", onclick: () => { cycleSort(ts, col); renderTable(layerKey, host); }, title: "Click to sort" }, col),
+      h("span", { class: "sort-ind", text: sortInd }),
+      h("button", { class: "funnel" + (active ? " active" : ""), title: "Filter", onclick: (e) => openFilterPopup(e, layerKey, host, parsed, col) }, "▾"),
+    );
+    const search = h("div", { class: "col-search" },
+      h("input", {
+        type: "text", placeholder: "filter…", value: ts.search[col] || "",
+        oninput: debounce((e) => { ts.search[col] = e.target.value; ts.page = 0; renderTable(layerKey, host); }, 180),
+      }));
+    return h("th", {}, inner, search);
+  });
+
+  // ---- body ----
+  const bodyRows = paged.map((row) =>
+    h("tr", {}, ...parsed.columns.map((col) => renderCell(col, row, isLayer4))));
+
+  const table = h("table", {}, h("thead", {}, h("tr", {}, ...headCells)), h("tbody", {}, ...bodyRows));
+
+  // ---- footer / pager ----
+  const foot = h("div", { class: "table-foot" },
+    h("span", { text: total === parsed.rows.length ? `${total} rows` : `${total} of ${parsed.rows.length} rows` }),
+    h("span", { class: "spacer" }));
+  if (total > PAGE_SIZE) {
+    const pager = h("span", { class: "pager" },
+      h("span", { text: `Page ${ts.page + 1} / ${pageCount}` }),
+      h("button", { disabled: ts.page === 0 ? "disabled" : null, onclick: () => { ts.page--; renderTable(layerKey, host); } }, "‹ Prev"),
+      h("button", { disabled: ts.page >= pageCount - 1 ? "disabled" : null, onclick: () => { ts.page++; renderTable(layerKey, host); } }, "Next ›"));
+    foot.appendChild(pager);
+  }
+
+  host.appendChild(h("div", { class: "table-wrap" },
+    h("div", { class: "table-scroll" }, table),
+    foot));
+}
+
+function renderCell(col, row, isLayer4) {
+  const raw = row[col] == null ? "" : String(row[col]);
+
+  if (isLayer4 && col === "acceptable_difference") {
+    const truthy = raw.toLowerCase() === "true";
+    if (truthy) {
+      const diffCol = row["column"];
+      return h("td", {}, h("span", {
+        class: "badge accepted", title: "Accepted difference — click for reason",
+        onclick: (e) => showReasonPopup(e, diffCol),
+      }, "accepted"));
+    }
+    return h("td", {}, h("span", { class: "badge plain" }, "not accepted"));
+  }
+
+  // Light styling for boolean-ish columns.
+  if (raw === "True" || raw === "False") {
+    return h("td", {}, h("span", { class: raw === "True" ? "cell-bool-true" : "cell-bool-false", text: raw }));
+  }
+  return h("td", { text: raw });
+}
+
+function cmpCells(a, b) {
+  a = a == null ? "" : String(a); b = b == null ? "" : String(b);
+  const na = parseFloat(a), nb = parseFloat(b);
+  const aNum = a !== "" && !isNaN(na) && /^-?\d*\.?\d+$/.test(a.trim());
+  const bNum = b !== "" && !isNaN(nb) && /^-?\d*\.?\d+$/.test(b.trim());
+  if (aNum && bNum) return na - nb;
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
+function cycleSort(ts, col) {
+  if (ts.sort.col !== col) { ts.sort = { col, dir: 1 }; return; }
+  ts.sort.dir = ts.sort.dir === 1 ? -1 : ts.sort.dir === -1 ? 0 : 1;
+  if (ts.sort.dir === 0) ts.sort.col = null;
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ---------------------------------------------------------------------------
+// Popups (filter checklist + accepted-reason)
+// ---------------------------------------------------------------------------
+let openPopup = null;
+function closePopup() { if (openPopup) { openPopup.remove(); openPopup = null; document.removeEventListener("mousedown", onDocDown, true); document.removeEventListener("keydown", onEsc, true); } }
+function onDocDown(e) { if (openPopup && !openPopup.contains(e.target)) closePopup(); }
+function onEsc(e) { if (e.key === "Escape") closePopup(); }
+function placePopup(pop, anchorEl) {
+  document.body.appendChild(pop);
+  const r = anchorEl.getBoundingClientRect();
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = Math.min(r.left, window.innerWidth - pw - 8);
+  let top = r.bottom + 6;
+  if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+  pop.style.left = Math.max(8, left) + "px";
+  pop.style.top = top + "px";
+  openPopup = pop;
+  setTimeout(() => { document.addEventListener("mousedown", onDocDown, true); document.addEventListener("keydown", onEsc, true); }, 0);
+}
+
+function openFilterPopup(ev, layerKey, host, parsed, col) {
+  ev.stopPropagation();
+  closePopup();
+  const ts = getTableState(layerKey, parsed.columns);
+
+  // Distinct values over the full column, capped.
+  const seen = new Set();
+  for (const row of parsed.rows) { seen.add(row[col] == null ? "" : String(row[col])); if (seen.size > DISTINCT_CAP) break; }
+  const capped = seen.size > DISTINCT_CAP;
+  const values = Array.from(seen).sort(cmpCells);
+  const current = ts.filters[col]; // Set or undefined (=all)
+
+  const listHost = h("div", { class: "p-list" });
+  const checkboxes = new Map();
+  const renderList = (filterText) => {
+    clear(listHost);
+    const ft = (filterText || "").toLowerCase();
+    for (const v of values) {
+      if (ft && !v.toLowerCase().includes(ft)) continue;
+      const checked = current ? current.has(v) : true;
+      const cb = h("input", { type: "checkbox", checked: checked ? "checked" : null });
+      checkboxes.set(v, cb);
+      listHost.appendChild(h("label", {}, cb, h("span", { text: v === "" ? "(empty)" : v })));
+    }
+  };
+  renderList("");
+
+  const search = h("input", { class: "p-search", type: "text", placeholder: "Search values…", oninput: (e) => renderList(e.target.value) });
+  const apply = h("button", { class: "p-apply", onclick: () => {
+    const chosen = new Set();
+    // Only iterate currently-rendered checkboxes; unrendered (search-hidden)
+    // values keep their prior state.
+    let anyRendered = false;
+    for (const [v, cb] of checkboxes) { anyRendered = true; if (cb.checked) chosen.add(v); }
+    // Merge: start from current effective set, then apply the rendered subset.
+    const effective = current ? new Set(current) : new Set(values);
+    if (anyRendered) {
+      for (const [v, cb] of checkboxes) { if (cb.checked) effective.add(v); else effective.delete(v); }
+    }
+    ts.filters[col] = effective.size === values.length ? null : effective;
+    ts.page = 0;
+    closePopup();
+    renderTable(layerKey, host);
+  } }, "Apply");
+
+  const pop = h("div", { class: "popup filter-popup", onmousedown: (e) => e.stopPropagation() },
+    search,
+    h("div", { class: "p-actions" },
+      h("button", { onclick: () => { for (const cb of checkboxes.values()) cb.checked = true; } }, "Select all"),
+      h("button", { onclick: () => { for (const cb of checkboxes.values()) cb.checked = false; } }, "Clear"),
+      current ? h("button", { onclick: () => { delete ts.filters[col]; ts.page = 0; closePopup(); renderTable(layerKey, host); } }, "Reset column") : null,
+    ),
+    listHost,
+    capped ? h("div", { class: "p-note", text: `Showing first ${DISTINCT_CAP} distinct values.` }) : null,
+    apply,
+  );
+  placePopup(pop, ev.currentTarget);
+}
+
+function showReasonPopup(ev, column) {
+  ev.stopPropagation();
+  closePopup();
+  const info = state.accepted[column];
+  const pop = h("div", { class: "popup reason-popup", onmousedown: (e) => e.stopPropagation() },
+    h("h4", { text: `Accepted: ${column}` }),
+    info
+      ? h("dl", {},
+          h("dt", { text: "Reason" }), h("dd", { text: info.reason || "(none given)" }),
+          h("dt", { text: "Example left" }), h("dd", { text: info.example_left || "—" }),
+          h("dt", { text: "Example right" }), h("dd", { text: info.example_right || "—" }))
+      : h("div", { class: "p-note", text: "No reason recorded in accepted_differences.csv for this column." }),
+  );
+  placePopup(pop, ev.currentTarget || ev.target);
+}
+
+// ---------------------------------------------------------------------------
+boot();
+</script>
+</body>
+</html>
