@@ -11,3 +11,8 @@ wheels/
 
 # Agent worktrees (temporary, created/removed by the Agent tool)
 .claude/worktrees/
+
+# Pipeline run output (execution folders + rebuilt index are generated per run);
+# keep the input/ folder tracked since config.py points the pipeline at it.
+/data/*
+!/data/input/
