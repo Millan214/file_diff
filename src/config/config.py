@@ -7,7 +7,9 @@ KEY_COLUMNS = ["id"]
 
 INPUT_LEFT = PROJECT_ROOT / "data" / "input" / "file1.csv"
 INPUT_RIGHT = PROJECT_ROOT / "data" / "input" / "file2.csv"
-DATA_OUTPUT_ROOT = PROJECT_ROOT / "data"
+# Execution folders (execution=<ts>/) and the rebuilt executions.json index
+# live here, under data/executions/ (kept separate from data/input/).
+DATA_OUTPUT_ROOT = PROJECT_ROOT / "data" / "executions"
 ACCEPTED_DIFFERENCES_PATH = PROJECT_ROOT / "docs" / "layer_4_compare_values" / "accepted_differences.csv"
 
 CSV_DELIMITER = ","
