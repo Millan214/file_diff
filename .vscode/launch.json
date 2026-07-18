@@ -1,0 +1,40 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run Pipeline",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.main",
+      "jinja": true,
+      "justMyCode": true,
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "preLaunchTask": "uv-sync"
+    },
+    {
+      "name": "Python: Serve Dashboard",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/serve.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Python: HTTP Server (Port 8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "http.server",
+      "args": ["8000"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Pipeline + Serve Dashboard",
+      "configurations": ["Python: Run Pipeline", "Python: Serve Dashboard"],
+      "stopAll": true
+    }
+  ]
+}
