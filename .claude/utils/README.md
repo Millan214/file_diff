@@ -6,11 +6,11 @@ implement as focused modules re-exported from it if it grows past ~300 lines.
 ## Modules
 
 ### execution.py — `ExecutionContext`
-- Creates `data/execution=<YYYY-MM-DD_HH-MM-SS>/` (+ `_1` suffix on collision, D10)
-  and the four layer subfolders.
+- Creates `data/executions/execution=<YYYY-MM-DD_HH-MM-SS>/` (+ `_1` suffix on
+  collision, D10) and the four layer subfolders.
 - Holds config, per-layer `LayerResult`s and verdicts, input-file content hash.
 - `write_manifest()` → `manifest.json` (see dashboard.md schema) and rebuilds
-  the root `data/executions.json` index by listing `execution=*` folders.
+  the `data/executions/executions.json` index by listing `execution=*` folders.
 
 ### artifacts.py — CSV/TXT writers
 - `write_csv(df, path)` — UTF-8, no index.

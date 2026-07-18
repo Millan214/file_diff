@@ -4,7 +4,7 @@
 
 ```
 main.py
-  └─ ExecutionContext (creates data/execution=<ts>/, holds config, paths, verdicts)
+  └─ ExecutionContext (creates data/executions/execution=<ts>/, holds config, paths, verdicts)
       ├─ Layer 1 read            → run → export(csv,txt) → report(pdf) → gate
       ├─ Layer 2 compare_columns → run → export → report → gate   (passes common columns forward)
       ├─ Layer 3 compare_rows    → run → export → report → gate   (passes inner-row keys forward)

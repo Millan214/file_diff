@@ -12,8 +12,9 @@ requirements) and `.claude/docs/spec.md` for context.
 Hard constraints:
 - One static file: HTML + CSS + JS inline. No frameworks, no CDN, no build
   step; must work fully offline served by `python -m http.server` from repo root.
-- Data comes only from `data/executions.json`, per-run `manifest.json`, layer
-  CSVs, and `docs/layer_4_compare_values/accepted_differences.csv`. Never parse PDFs.
+- Data comes only from `data/executions/executions.json`, per-run
+  `manifest.json`, layer CSVs, and
+  `docs/layer_4_compare_values/accepted_differences.csv`. Never parse PDFs.
 - Hand-rolled CSV parser must handle quoted fields containing commas/newlines.
 - Tables: per-column sort + distinct-value checkbox filters combining with AND;
   paginate or virtualize beyond ~5000 rows.

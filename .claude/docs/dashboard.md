@@ -9,10 +9,10 @@ Opening via `file://` is unsupported (D6).
 
 The dashboard never parses PDFs — it reads:
 
-- `data/executions.json` — index rebuilt on every run:
+- `data/executions/executions.json` — index rebuilt on every run:
   `[{ "id": "execution=2026-07-18_12-00-00", "date": "...", "exit_code": 0 }]`
   (newest first).
-- `data/<id>/manifest.json`:
+- `data/executions/<id>/manifest.json`:
   ```json
   {
     "execution_id": "execution=2026-07-18_12-00-00",

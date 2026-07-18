@@ -8,8 +8,8 @@ All have an `id` column for row-matching against `KEY_COLUMNS = ["id"]` in confi
 | **identical** | 5 rows: id 1–5, names & values | Identical to left | Layer success path | All layers: success |
 | **column_drift** | id, name, value, `status` | id, name, value, `department` | Column set mismatch; common = {id, name, value} | Layer 2: completed-with-differences; Layer 3–4 continue with common columns |
 | **row_drift_dupes** | id 1 (dup), 2–4 | id 2–6 | Duplicate key in left; left-only (1), inner (2–4), right-only (5–6) | Layer 3: completed-with-differences; duplicates excluded from Layer 4 |
-| **value_drift** | 5 rows identical shape | id 2 (Bob→Robert, 200→205), id 4 (Diana, 400→410) | Value mismatches in common columns | Layer 4: completed-with-differences |
-| **encoding_conflict** | UTF-8 content with accented chars (Alíce, Böb) | ISO-8859-1; plain ASCII | Encoding detection; D4 normalization | Layer 1: hard-failure if encodings are incompatible |
+| **value_drift** | 5 rows identical shape | id 2 (Bob→Robert, 200→205), id 4 (Diana, 400→410) | Value mismatches in common columns | Layer 4: failed (only `value` is accepted; the `name` change is not) → exit 4 |
+| **encoding_conflict** | UTF-8 content with accented chars (Alíce, Böb) | plain ASCII content | Encoding detection; D4 normalization | Layer 1: success — ASCII normalizes to UTF-8 (D4), so the sides are compatible and the run proceeds to Layer 4, which fails on the accented-name diffs (exit 4) |
 | **empty_common** | col_a, col_b, col_c | col_d, col_e, col_f | Zero overlapping columns | Layer 2: hard-failure (D5); no common set to proceed with |
 
 ## Usage in tests
