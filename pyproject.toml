@@ -1,0 +1,17 @@
+[project]
+name = "compare-dataframes"
+version = "0.1.0"
+description = "Compare two CSV files layer-by-layer with gated reports"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0",
+    "charset-normalizer>=3.0",
+    "fpdf2>=2.7",
+    "matplotlib>=3.8",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4",
+]

@@ -1,0 +1,114 @@
+For the agent:
+Read the follwing specs, your goal is to understand, ask questions, analyze, criticize, find flaws
+
+Once the idea is clear, you have to create a step-by-step plan to implement it, with a claude model recomendation for each step.
+
+organize all your ideas in a .claude folder
+CLAUDE.md should only be a router to .claude
+inside the .claude you should have a /agents, /docs, /layers, /utils folders (and whatever you need)
+
+-----
+
+I want a python script that compares two files and shows the differences between them.
+
+i want a layered-based architecture
+this shall be the layers:
+1. read files;
+    if the one or both files doesent exist, or have different encodings, then the script shall end.
+    export: this should generate a csv and txt file with the names of the files and the econdings.
+    report: this generates a pdf file showing the files readed with names and econdings and if the process was successful or not.
+
+2. compare columns
+    if the columns are different, then the script shall end.
+    export: this should generate a csv and txt file with the differences between the columns.
+    report: this generates a pdf file showing the columns readed with names and econdings and if the process was successful or not.
+        this should also show the differences between columns, the columns that left has but the other one doesnt, and the columns that left doesnt but the other one has.
+        this should also check the datatypes of the columns.
+    the script shall continue with the common columns ( this should also be in the pdf file )
+
+3. compare rows
+    if the rows are different by id, then the script shall end.
+    this should also check for duplicates
+    export: this should generate a csv and txt file with the differences between the rows.
+    report: this generates a pdf file showing the rows readed with names and econdings and if the process was successful or not.
+        the pdf should display a horizontal rectangle bar graph showing the number of left, inner and right rows, and the number of duplicates
+
+4. value comparison
+    here we compare the actual values of each cell
+    if the values are different, then the script shall end.
+    export: this should generate a csv file with the differences between the values.
+    report: this generates a pdf file showing the value differences and if the process was successful or not.
+        this should feature a vertical graph showing the columns names and the count of differences on a horizontal bar graph.
+
+
+
+this shall be the file structure:
+
+/root
+    /data
+        /input
+            /file1.csv
+            /file2.csv
+        /execution(hash)=2026-07-18_12-00-00
+            /layer_1_read
+                /layer_1_read.csv
+                /layer_1_read.txt
+                /layer_1_read.pdf
+            /layer_2_compare_columns
+                /layer_2_compare_columns.csv
+                /layer_2_compare_columns.txt
+                /layer_2_compare_columns.pdf
+            /layer_3_compare_rows
+                /layer_3_compare_rows.csv
+                /layer_3_compare_rows.txt
+                /layer_3_compare_rows.pdf
+            /layer_4_compare_values
+                /layer_4_compare_values.csv
+                /layer_4_compare_values.txt
+                /layer_4_compare_values.pdf
+    /src
+        main.py
+        main.html
+        /layers
+            /layer_1_read
+                read.py
+                gate.py
+            /layer_2_compare_columns
+                compare_columns.py
+                gate.py
+            /layer_3_compare_rows
+                compare_rows.py
+                gate.py
+            /layer_4_compare_values
+                compare_values.py
+                gate.py
+        /config
+            config.py
+        /utils
+            utils.py
+
+
+the architecture has a main.html with:
+    - a sidebar with the layers
+    - a top header with the execution id and date with a refresh button and a dropdown to select executions
+    - a main content that reads each layer .csv and dsiplays it in the same way as the pdf report, each table shall be filterable like an excel
+
+
+tech stack:
+python, uv (package management)
+
+code quality:
+Functional Transformations (df.pipe)
+    To ensure maintainability, use a functional programming paradigm for data manipulation
+    Pure Functions: Write transformations as small, atomic functions that accept a DataFrame and return a DataFrame without side effects
+    Pipelining: These functions are designed to be chained using the df.pipe structure, which keeps the narrative flow of your transformations clear and readable
+    Isolation: Separate your business logic (the "what") from the plumbing (the "how")
+    This allows you to test transformations locally with small 5–20 row fixtures without needing a live database connection
+
+on the layer 4 compare values:
+    - some columns might have acceptable differences, the team decides what colum differences are acceptable, this should translated:
+        - into the pdf report as grey bars in the horizontal bar graph
+        - into the csv file as a new column "acceptable_difference"
+        - into the txt file as a new column "acceptable_difference"
+        - a new /docs/layer_4_compare_values/accepted_differences.csv with "column", "reason", "example_left", "example_right" columns
+        - into the html table as a new column "acceptable_difference" and a grey bar graph, when clicked it should open the reason in the docs as a popup
