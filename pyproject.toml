@@ -15,3 +15,9 @@ dependencies = [
 dev = [
     "pytest>=7.4",
 ]
+
+[tool.pytest.ini_options]
+# tests/ has no __init__.py, so pytest's default "prepend" import mode adds
+# tests/ (not the repo root) to sys.path. Without this, `from src...` imports
+# fail under `uv run pytest` even though they work fine under `uv run python`.
+pythonpath = ["."]
