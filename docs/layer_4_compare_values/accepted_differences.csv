@@ -1,1 +1,2 @@
 column,reason,example_left,example_right
+value,Rounding differences from an upstream system are tolerated,200,205
