@@ -29,7 +29,7 @@ import pandas as pd
 from fpdf import FPDF
 from fpdf.enums import Align, XPos, YPos
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch
+from matplotlib.patches import Patch, Rectangle
 
 RGB = tuple[int, int, int]
 
@@ -48,6 +48,15 @@ _WHITE: RGB = (255, 255, 255)
 
 _SERIES_1: RGB = (42, 120, 214)  # #2a78d6  categorical slot 1 (blue)
 _GREY_BAR: RGB = _MUTED_INK  # grey fill for de-emphasized/accepted bars (D3)
+
+# Row-match "set map" region fills (layer 3's set_partition_chart, and the
+# dashboard's rowSetDiagram, share this vocabulary): duplicated keys read as
+# pink at the two ends, side-only keys as orange, the matched inner set as
+# green, keys duplicated on *both* sides as purple next to the inner block.
+_PINK: RGB = (214, 93, 121)  # #d65d79  duplicate_left / duplicate_right
+_ORANGE: RGB = (224, 145, 45)  # #e0912d  left_only / right_only
+_GREEN: RGB = (58, 160, 92)  # #3aa05c  inner (matched)
+_PURPLE: RGB = (138, 92, 214)  # #8a5cd6  duplicate_both
 
 _STATUS_GOOD: RGB = (12, 163, 12)  # #0ca30c
 _STATUS_WARNING: RGB = (250, 178, 25)  # #fab219
@@ -439,6 +448,83 @@ def barh_chart(
             handles=handles, loc="lower right", frameon=False, fontsize=9,
             labelcolor=_hex(_SECONDARY_INK),
         )
+
+    fig.tight_layout()
+    return fig
+
+
+#: Region kind -> fill color for the row-match set map. Keys are the
+#: ``kind`` field of ``set_partition_chart``'s regions.
+_REGION_FILL: dict[str, RGB] = {
+    "dupes": _PINK,
+    "only": _ORANGE,
+    "inner": _GREEN,
+    "both": _PURPLE,
+}
+
+
+def set_partition_chart(
+    regions: Sequence[tuple[str, int, str]],
+    *,
+    title: str | None = None,
+) -> Figure:
+    """A linear "set map" of layer 3's row classification (layer_3 spec / D14).
+
+    ``regions`` is an ordered sequence of ``(label, count, kind)`` read
+    left-to-right -- e.g. dupes-left | left-only | inner | right-only |
+    dupes-right -- rendered as adjacent boxes whose widths are broadly
+    proportional to ``count``. ``kind`` selects the fill from ``_REGION_FILL``
+    (``"dupes"`` pink, ``"only"`` orange, ``"inner"`` green, ``"both"``
+    purple). Zero-count regions are dropped so the diagram stays legible;
+    small non-zero regions get a minimum display width so their box and
+    count never collapse to a hairline.
+
+    Returns the matplotlib Figure; embed it via ``ReportBuilder.add_chart``.
+    """
+    drawn = [(label, int(count), kind) for label, count, kind in regions if int(count) > 0]
+
+    fig, ax = plt.subplots(figsize=(7.2, 2.2), dpi=150)
+    fig.patch.set_facecolor(_hex(_SURFACE))
+    ax.set_facecolor(_hex(_SURFACE))
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+    if title:
+        ax.set_title(_safe_text(title), color=_hex(_PRIMARY_INK), fontsize=12, fontweight="bold", loc="left")
+
+    if not drawn:
+        ax.text(0.5, 0.5, "No rows", ha="center", va="center", color=_hex(_MUTED_INK), fontsize=11)
+        fig.tight_layout()
+        return fig
+
+    total = sum(count for _label, count, _kind in drawn)
+    # Give every drawn box at least this share of the width so a count-of-1
+    # region beside a large inner block is still readable; then renormalize.
+    floor = total * 0.08
+    display = [max(count, floor) for _label, count, _kind in drawn]
+    span = sum(display)
+
+    gap = 0.008
+    x = 0.0
+    y0, height = 0.30, 0.44
+    for (label, count, kind), raw_w in zip(drawn, display):
+        w = raw_w / span - gap
+        if w <= 0:
+            w = raw_w / span
+        fill = _hex(_REGION_FILL.get(kind, _SERIES_1))
+        ax.add_patch(
+            Rectangle(
+                (x, y0), w, height,
+                facecolor=fill, edgecolor=_hex(_WHITE), linewidth=1.5,
+                joinstyle="round", zorder=3,
+            )
+        )
+        cx = x + w / 2
+        ax.text(cx, y0 + height / 2, f"{count:,}", ha="center", va="center",
+                color=_hex(_WHITE), fontsize=13, fontweight="bold", zorder=4)
+        ax.text(cx, y0 - 0.09, _safe_text(label), ha="center", va="top",
+                color=_hex(_SECONDARY_INK), fontsize=9)
+        x += w + gap
 
     fig.tight_layout()
     return fig

@@ -1,39 +1,35 @@
 {
+  // Debug/run configurations for the compare-dataframes project.
+  // Both use the project's uv-managed virtualenv (.venv) so dependencies
+  // resolve without a manual interpreter selection.
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Run Pipeline",
+      "name": "Run Pipeline",
       "type": "debugpy",
       "request": "launch",
       "module": "src.main",
-      "jinja": true,
-      "justMyCode": true,
-      "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "preLaunchTask": "uv-sync"
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "justMyCode": true
     },
     {
-      "name": "Python: Serve Dashboard",
+      "name": "Serve Dashboard",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/serve.py",
+      "args": [],
       "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "name": "Python: HTTP Server (Port 8000)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "http.server",
-      "args": ["8000"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "justMyCode": true
     }
   ],
   "compounds": [
     {
       "name": "Run Pipeline + Serve Dashboard",
-      "configurations": ["Python: Run Pipeline", "Python: Serve Dashboard"],
+      "configurations": ["Run Pipeline", "Serve Dashboard"],
       "stopAll": true
     }
   ]

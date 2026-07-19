@@ -228,6 +228,14 @@ def test_run_identical_fixture_is_success(make_config, fixtures_dir):
         "inner": 5,
         "right_only": 0,
         "duplicates": 0,
+        "row_map": {
+            "dupes_left": 0,
+            "left_only": 0,
+            "inner": 5,
+            "right_only": 0,
+            "dupes_right": 0,
+            "dupes_both": 0,
+        },
     }
     assert result.extras["inner_keys"] == {("1",), ("2",), ("3",), ("4",), ("5",)}
     assert list(result.data.columns) == ["id", "status"]
@@ -248,6 +256,14 @@ def test_run_row_drift_dupes_fixture_is_completed_with_differences(make_config, 
         "inner": 3,
         "right_only": 2,
         "duplicates": 1,  # distinct duplicated keys (id=1), not row count (2 rows)
+        "row_map": {
+            "dupes_left": 0,  # id=1 is duplicated in left but absent from right -> left_only, not a dupes bucket
+            "left_only": 1,
+            "inner": 3,
+            "right_only": 2,
+            "dupes_right": 0,
+            "dupes_both": 0,
+        },
     }
 
     data = result.data

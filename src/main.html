@@ -628,13 +628,83 @@ function svgBarChart(items, opts = {}) {
   return wrap;
 }
 
+// Row-match "set map": a linear partition read left-to-right —
+// dupes-left | left-only | inner | right-only | dupes-right (dupes-both,
+// duplicated on both sides, tucked beside the inner block). Box widths are
+// broadly proportional to each region's key count, with a floor so small
+// non-zero regions stay legible. Mirrors the layer-3 PDF's set_partition_chart.
+const ROW_MAP_REGIONS = [
+  ["dupes_left", "dupes left", "dupes"],
+  ["left_only", "left only", "only"],
+  ["inner", "inner", "inner"],
+  ["dupes_both", "dupes both", "both"],
+  ["right_only", "right only", "only"],
+  ["dupes_right", "dupes right", "dupes"],
+];
+const ROW_REGION_FILL = { dupes: "#d65d79", only: "#e0912d", inner: "#3aa05c", both: "#8a5cd6" };
+
 function rowChart(summary) {
-  const cats = [
-    ["left_only", "Left only"], ["inner", "Inner (matched)"],
-    ["right_only", "Right only"], ["duplicates", "Duplicates"],
-  ];
-  const items = cats.map(([k, label]) => ({ label, value: Number(summary[k] || 0) }));
-  return svgBarChart(items);
+  const rm = summary.row_map;
+  if (!rm || typeof rm !== "object") {
+    // Legacy manifest without row_map: fall back to the plain bar chart.
+    const cats = [
+      ["left_only", "Left only"], ["inner", "Inner (matched)"],
+      ["right_only", "Right only"], ["duplicates", "Duplicates"],
+    ];
+    return svgBarChart(cats.map(([k, label]) => ({ label, value: Number(summary[k] || 0) })));
+  }
+  return rowSetDiagram(rm);
+}
+
+function rowSetDiagram(rm) {
+  const drawn = ROW_MAP_REGIONS
+    .map(([key, label, kind]) => ({ label, value: Number(rm[key] || 0), kind }))
+    .filter((r) => r.value > 0);
+
+  if (!drawn.length) {
+    return h("div", { class: "chart" }, h("div", { class: "msg", text: "No rows to classify." }));
+  }
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const w = 720, svgH = 132, top = 18, boxH = 70;
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${w} ${svgH}`);
+  svg.setAttribute("role", "img");
+
+  const total = drawn.reduce((s, r) => s + r.value, 0);
+  const floor = total * 0.08;                                  // min share so tiny regions stay visible
+  const display = drawn.map((r) => Math.max(r.value, floor));
+  const span = display.reduce((s, v) => s + v, 0);
+  const gap = 6;
+  const innerW = w - (drawn.length - 1) * gap;
+
+  let x = 0;
+  drawn.forEach((r, i) => {
+    const bw = (display[i] / span) * innerW;
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("x", x); rect.setAttribute("y", top);
+    rect.setAttribute("width", bw); rect.setAttribute("height", boxH);
+    rect.setAttribute("rx", 6);
+    rect.setAttribute("fill", ROW_REGION_FILL[r.kind] || "#888");
+    svg.appendChild(rect);
+
+    const val = document.createElementNS(svgNS, "text");
+    val.setAttribute("x", x + bw / 2); val.setAttribute("y", top + boxH / 2 + 6);
+    val.setAttribute("text-anchor", "middle");
+    val.setAttribute("fill", "#fff"); val.setAttribute("font-size", "18"); val.setAttribute("font-weight", "700");
+    val.textContent = String(r.value);
+    svg.appendChild(val);
+
+    const lab = document.createElementNS(svgNS, "text");
+    lab.setAttribute("x", x + bw / 2); lab.setAttribute("y", top + boxH + 20);
+    lab.setAttribute("text-anchor", "middle"); lab.setAttribute("class", "bar-label");
+    lab.textContent = r.label;
+    svg.appendChild(lab);
+
+    x += bw + gap;
+  });
+
+  return h("div", { class: "chart" }, svg);
 }
 
 function valueChart(summary) {

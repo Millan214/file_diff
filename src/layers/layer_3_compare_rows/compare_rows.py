@@ -23,7 +23,7 @@ import pandas as pd
 from src.utils.artifacts import write_csv, write_txt
 from src.utils.execution import ExecutionContext, LayerResult, Verdict
 from src.utils.keys import duplicate_mask, key_frame, unique_keys
-from src.utils.pdf import ReportBuilder, barh_chart
+from src.utils.pdf import ReportBuilder, set_partition_chart
 
 _STATUS_COLUMN = "status"
 
@@ -189,6 +189,21 @@ def _build_summary(
         _INNER: len(classification[_INNER]),
         _RIGHT_ONLY: len(classification[_RIGHT_ONLY]),
         "duplicates": len(dup_left_keys | dup_right_keys),
+        # A true disjoint partition of every key (unlike "duplicates" above,
+        # which is a distinct-key union) for the row-match "set map": each key
+        # lands in exactly one bucket. Read left-to-right this is the diagram
+        # order dupes-left | left-only | inner | right-only | dupes-right, with
+        # dupes-both (duplicated on *both* sides) tucked beside the inner block.
+        # A nested object so the dashboard's summary tiles skip it and only the
+        # chart consumes it.
+        "row_map": {
+            "dupes_left": len(classification[_DUPLICATE_LEFT]),
+            "left_only": len(classification[_LEFT_ONLY]),
+            "inner": len(classification[_INNER]),
+            "right_only": len(classification[_RIGHT_ONLY]),
+            "dupes_right": len(classification[_DUPLICATE_RIGHT]),
+            "dupes_both": len(classification[_DUPLICATE_BOTH]),
+        },
     }
 
 
@@ -275,9 +290,21 @@ def export(result: LayerResult, ctx: ExecutionContext) -> None:
     write_txt(result.data, ctx.txt_path(result.name), header_lines=header_lines)
 
 
+#: (row_map key, chart label, region kind) for the set-map, in reading order.
+_ROW_MAP_REGIONS: tuple[tuple[str, str, str], ...] = (
+    ("dupes_left", "dupes left", "dupes"),
+    ("left_only", "left only", "only"),
+    ("inner", "inner", "inner"),
+    ("dupes_both", "dupes both", "both"),
+    ("right_only", "right only", "only"),
+    ("dupes_right", "dupes right", "dupes"),
+)
+
+
 def report(result: LayerResult, ctx: ExecutionContext) -> None:
     """Write ``layer_3_compare_rows.pdf``: header + verdict banner + summary +
-    horizontal bar chart (left_only/inner/right_only/duplicates, D14)."""
+    the row-match "set map" (dupes-left/left-only/inner/right-only/dupes-right,
+    D14)."""
     files = _resolve_files(ctx)
 
     builder = ReportBuilder(
@@ -297,12 +324,8 @@ def report(result: LayerResult, ctx: ExecutionContext) -> None:
     summary_df = pd.DataFrame({"category": categories, "count": counts})
     builder.add_table(summary_df, heading="Row match summary")
 
-    fig = barh_chart(
-        categories,
-        counts,
-        title="Row match summary",
-        xlabel="Row count",
-    )
-    builder.add_chart(fig)
+    row_map = summary.get("row_map", {})
+    regions = [(label, row_map.get(key, 0), kind) for key, label, kind in _ROW_MAP_REGIONS]
+    builder.add_chart(set_partition_chart(regions, title="Row match map"))
 
     builder.output(str(ctx.pdf_path(result.name)))
