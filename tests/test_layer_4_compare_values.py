@@ -1,4 +1,4 @@
-"""Tests for src/layers/layer_4_compare_values (compare_values.py + gate.py).
+"""Tests for src/layers/layer_4_compare_values (equality/accepted/logic/run/output.py).
 
 Layers 1-3 are built on separate branches, so their LayerResults are
 hand-constructed here per the fixed interface contract: layer 1's extras carry
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.layers.layer_4_compare_values.compare_values import (
+from src.layers.layer_4_compare_values import (
     AcceptedDifferences,
     align_frames,
     compare_cells,
@@ -26,7 +26,6 @@ from src.layers.layer_4_compare_values.compare_values import (
     value_verdict,
     values_equal,
 )
-from src.layers.layer_4_compare_values.gate import decide
 from src.utils.execution import ExecutionContext, LayerResult
 from src.utils.keys import duplicate_mask, key_frame, unique_keys
 
@@ -462,19 +461,6 @@ def test_run_tolerance_suppresses_diffs(make_config, fixtures_dir):
 
 
 # --------------------------------------------------------------------------
-# gate.decide (terminal)
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "verdict,expected",
-    [("success", "CONTINUE"), ("completed-with-differences", "CONTINUE"), ("failed", "STOP")],
-)
-def test_gate_decide(verdict, expected):
-    assert decide(verdict) == expected
-
-
-# --------------------------------------------------------------------------
 # export() -- real CSV/TXT via ExecutionContext
 # --------------------------------------------------------------------------
 
@@ -503,7 +489,7 @@ def test_export_writes_csv_and_txt(make_config, fixtures_dir):
 
 
 def test_export_writes_artifacts_even_on_failed_verdict(make_config, fixtures_dir):
-    """architecture.md's contract: artifacts written before the gate, on failure too."""
+    """architecture.md's contract: artifacts written before the pipeline stops, on failure too."""
     layer1, layer2, layer3, config = _results_for(make_config, "value_drift", fixtures_dir)
     ctx = ExecutionContext.create(config)
     ctx.record(layer1)
@@ -514,7 +500,6 @@ def test_export_writes_artifacts_even_on_failed_verdict(make_config, fixtures_di
     export(result, ctx)
     assert ctx.csv_path(result.name).exists()
     assert ctx.txt_path(result.name).exists()
-    assert decide(result.verdict) == "STOP"
 
 
 # --------------------------------------------------------------------------

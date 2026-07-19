@@ -1,4 +1,4 @@
-"""Tests for src/layers/layer_2_compare_columns/ (compare_columns.py + gate.py).
+"""Tests for src/layers/layer_2_compare_columns/ (logic.py / run.py / output.py).
 
 Layer 1 does not exist in this worktree yet -- per the cross-layer interface
 contract, ``LayerResult``s that stand in for layer 1's output are built by
@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.layers.layer_2_compare_columns import compare_columns, gate
+from src.layers import layer_2_compare_columns as compare_columns
 from src.utils.execution import ExecutionContext, LayerResult
 
 LAYER_NAME = "layer_2_compare_columns"
@@ -259,23 +259,6 @@ def test_run_empty_common_is_failed(fixtures_dir):
 
 
 # --------------------------------------------------------------------------
-# gate
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "verdict,expected",
-    [
-        ("success", "CONTINUE"),
-        ("completed-with-differences", "CONTINUE"),
-        ("failed", "STOP"),
-    ],
-)
-def test_gate_decide(verdict, expected):
-    assert gate.decide(verdict) == expected
-
-
-# --------------------------------------------------------------------------
 # export / report -- real files via ExecutionContext
 # --------------------------------------------------------------------------
 
@@ -314,8 +297,9 @@ def test_export_writes_csv_and_txt(make_config, fixtures_dir, pair):
     ],
 )
 def test_report_writes_pdf_even_on_failure(make_config, fixtures_dir, pair, expected_verdict):
-    """Artifacts (incl. the PDF) must be written before the gate runs, on
-    every verdict including 'failed' (architecture.md's layer contract)."""
+    """Artifacts (incl. the PDF) must be written before the pipeline decides
+    to stop, on every verdict including 'failed' (architecture.md's layer
+    contract)."""
     layer1 = _layer1_result(fixtures_dir, pair)
     config = make_config()
     config.KEY_COLUMNS = ["id"]
@@ -334,9 +318,8 @@ def test_report_writes_pdf_even_on_failure(make_config, fixtures_dir, pair, expe
     assert pdf_path.stat().st_size > 0
     assert pdf_path.read_bytes().startswith(b"%PDF-")
 
-    # Gate decision happens after artifacts exist either way.
-    decision = gate.decide(result.verdict)
-    assert decision == ("STOP" if expected_verdict == "failed" else "CONTINUE")
+    # The verdict that drives main.run_pipeline's stop is set after artifacts exist.
+    assert result.verdict == expected_verdict
 
 
 def test_report_falls_back_to_config_paths_when_layer1_not_recorded(make_config, fixtures_dir):

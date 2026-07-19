@@ -14,7 +14,7 @@ import json
 
 import pytest
 
-from src.layers.layer_2_compare_columns import compare_columns as layer_2
+from src.layers import layer_2_compare_columns as layer_2
 from src.main import main
 from src.utils.execution import CRASHED_EXIT_CODE, LAYER_NAMES
 

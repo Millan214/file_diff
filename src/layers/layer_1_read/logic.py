@@ -1,4 +1,4 @@
-"""Layer 1 -- read files, detect encodings, and hard-gate the pipeline.
+"""Layer 1 pure logic -- read files, detect encodings, decide the verdict.
 
 Purpose (``.claude/layers/layer_1_read.md``): load both input files, detect
 their encodings, and hard-fail the pipeline (D4, D13) if either file is
@@ -12,10 +12,7 @@ Pure-function decomposition per the layer spec -- ``check_exists``,
 *content*; ``check_exists``/``detect_file_encoding`` each do a single,
 already-isolated filesystem touch (``pathlib.Path.is_file`` /
 ``src/utils/encoding.py``'s own I/O) rather than reimplementing anything.
-
-Nothing here does exports/reports I/O except ``export``/``report`` below,
-which are the only functions in this module allowed to touch
-``src/utils/artifacts.py`` / ``src/utils/pdf.py``.
+Export/report I/O lives in ``output.py``; ``run`` in ``run.py``.
 """
 
 from __future__ import annotations
@@ -26,12 +23,9 @@ from typing import Any
 
 import pandas as pd
 
-from src.utils.artifacts import write_csv, write_txt
 from src.utils.encoding import DetectedEncoding, EncodingDetectionError, detect_encoding
-from src.utils.execution import ExecutionContext, LayerResult, Verdict
-from src.utils.pdf import ReportBuilder
 
-NAME = "layer_1_read"
+LAYER_NAME = "layer_1_read"
 
 #: Exceptions load_csv treats as "this file failed to parse as CSV" (spec
 #: step 4). EmptyDataError covers a literal 0-byte file (no header row to
@@ -193,97 +187,3 @@ def _side_row(side: SideResult) -> dict[str, Any]:
 
 def _failure_reasons(left: SideResult, right: SideResult) -> list[str]:
     return [f"{side.file}: {side.detail}" for side in (left, right) if side.status != "ok"]
-
-
-# ---------------------------------------------------------------------------
-# run
-# ---------------------------------------------------------------------------
-
-
-def run(config: Any) -> LayerResult:
-    """Load both configured input files and hard-gate on any failure (layer 1 spec)."""
-    left = _read_side(
-        "left", config.INPUT_LEFT, delimiter=config.CSV_DELIMITER, header_row=config.CSV_HEADER_ROW
-    )
-    right = _read_side(
-        "right", config.INPUT_RIGHT, delimiter=config.CSV_DELIMITER, header_row=config.CSV_HEADER_ROW
-    )
-    left, right = _mark_encoding_mismatch(left, right)
-
-    both_loaded = (
-        left.status == "ok" and right.status == "ok" and left.df is not None and right.df is not None
-    )
-    verdict: Verdict = "success" if both_loaded else "failed"
-
-    data = pd.DataFrame([_side_row(left), _side_row(right)], columns=_EXPORT_COLUMNS)
-
-    extras: dict[str, Any] = {
-        "df_left": left.df,
-        "df_right": right.df,
-        "left_encoding": left.encoding_normalized,
-        "right_encoding": right.encoding_normalized,
-        "files": {
-            "left": {"path": left.path.as_posix(), "encoding": left.encoding_normalized},
-            "right": {"path": right.path.as_posix(), "encoding": right.encoding_normalized},
-        },
-        "summary": {
-            "rows_left": len(left.df) if left.df is not None else None,
-            "rows_right": len(right.df) if right.df is not None else None,
-            "columns_left": len(left.df.columns) if left.df is not None else None,
-            "columns_right": len(right.df.columns) if right.df is not None else None,
-        },
-        "failure_reasons": _failure_reasons(left, right) if verdict == "failed" else [],
-    }
-
-    return LayerResult(name=NAME, verdict=verdict, data=data, extras=extras)
-
-
-# ---------------------------------------------------------------------------
-# export / report (the only I/O besides load_csv/detect_encoding above --
-# always called before the gate runs, including on a "failed" verdict)
-# ---------------------------------------------------------------------------
-
-
-def _header_lines(result: LayerResult, ctx: ExecutionContext) -> list[str]:
-    left_enc = result.extras.get("left_encoding") or "unknown"
-    right_enc = result.extras.get("right_encoding") or "unknown"
-    files = result.extras.get("files", {})
-    left_path = files.get("left", {}).get("path", str(ctx.config.INPUT_LEFT))
-    right_path = files.get("right", {}).get("path", str(ctx.config.INPUT_RIGHT))
-    return [
-        f"Left file:  {left_path}   (encoding: {left_enc})",
-        f"Right file: {right_path}   (encoding: {right_enc})",
-        f"Verdict:    {result.verdict}",
-        f"Generated:  {ctx.created_at.strftime('%Y-%m-%d %H:%M:%S')}",
-    ]
-
-
-def export(result: LayerResult, ctx: ExecutionContext) -> None:
-    """Write the layer 1 CSV + TXT exports (D12). Never calls ``.to_csv`` directly."""
-    write_csv(result.data, ctx.csv_path(result.name))
-    write_txt(result.data, ctx.txt_path(result.name), header_lines=_header_lines(result, ctx))
-
-
-def report(result: LayerResult, ctx: ExecutionContext) -> None:
-    """Write the layer 1 PDF report: standard header + table + verdict banner."""
-    files = result.extras.get("files", {})
-    left_path = files.get("left", {}).get("path", str(ctx.config.INPUT_LEFT))
-    right_path = files.get("right", {}).get("path", str(ctx.config.INPUT_RIGHT))
-
-    builder = ReportBuilder(
-        title="Layer 1 -- Read",
-        left_file=left_path,
-        right_file=right_path,
-        left_encoding=result.extras.get("left_encoding") or "unknown",
-        right_encoding=result.extras.get("right_encoding") or "unknown",
-        verdict=result.verdict,
-        timestamp=ctx.created_at,
-    )
-    builder.add_table(result.data, heading="Files")
-
-    if result.verdict == "failed":
-        reasons = result.extras.get("failure_reasons") or []
-        reason_text = " | ".join(reasons) if reasons else "See status column above."
-        builder.add_paragraph(f"Failing reason(s): {reason_text}")
-
-    builder.output(str(ctx.pdf_path(result.name)))

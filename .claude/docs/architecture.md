@@ -14,8 +14,9 @@ main.py
 
 ## The layer contract
 
-Every layer implements the same four phases, in this order — **artifacts are
-always written before the gate runs**, including on failure:
+Every layer implements the same three phases, in this order — **artifacts are
+always written before the pipeline decides whether to continue**, including on
+failure:
 
 1. **run** — pure computation. Takes the `LayerResult`s of previous layers +
    config, returns a `LayerResult` dataclass:
@@ -25,10 +26,13 @@ always written before the gate runs**, including on failure:
    (shared writers in utils, D12).
 3. **report** — write `layer_N_<name>.pdf`: standard header (file names,
    encodings, timestamp, verdict banner) + layer-specific tables/charts.
-4. **gate** (`gate.py`) — maps the verdict to a `GateDecision`:
-   `CONTINUE` | `STOP`. Layer 1: `failed → STOP`. Layer 2: STOP only when
-   common set is empty/missing keys (D5). Layer 3: always CONTINUE (D1).
-   Layer 4: terminal.
+
+After a layer is recorded, the orchestrator (`main.py`) stops the pipeline on
+a `failed` verdict and continues on any other. This is a single rule for all
+layers — each layer just chooses when to emit `failed`: layer 1 on any read
+failure; layer 2 when the common set is empty or missing keys (D5); layer 3
+never (row differences stay `completed-with-differences`, D1); layer 4 is
+terminal, so its verdict only drives the exit code.
 
 DataFrames pass between layers **in memory** via `ExecutionContext` — the
 CSV/TXT/PDF artifacts are outputs for humans and the dashboard, never re-read
@@ -48,11 +52,17 @@ by the pipeline.
 - **Pure functions + `df.pipe`**: each transformation is a small function
   `DataFrame -> DataFrame` (or `-> LayerResult` at the end of a chain), no
   side effects, no I/O. Layer modules read as one pipe chain.
-- **Isolation**: business logic (`read.py`, `compare_*.py`) never touches the
-  filesystem; plumbing (export/report/paths) lives in `src/utils/` and is
-  called by the orchestrator. This keeps every transformation testable with
-  5–20 row fixtures.
-- Gates are trivially small: verdict in, decision out. No I/O in gates.
+- **Standard layer package**: each layer is a package split into `logic.py`
+  (pure computation), `run.py` (`run()` assembles the `LayerResult`), and
+  `output.py` (`export()`/`report()` I/O), aggregated by `__init__.py` which
+  re-exports the public surface. Layer 4 adds `equality.py` (the D9 matrix) and
+  `accepted.py` (the policy loader).
+- **Isolation**: business logic (`logic.py`, and layer 4's `equality.py`) never
+  touches the filesystem; plumbing (export/report/paths) lives in `output.py`
+  and `src/utils/` and is called by the orchestrator. This keeps every
+  transformation testable with 5–20 row fixtures.
+- The continue/stop decision is a single inlined rule in `main.py`
+  (`verdict != "failed"`), not a per-layer module — no I/O, verdict in.
 
 ## Error handling
 
