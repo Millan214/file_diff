@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import sys
 import traceback
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from src.config import config as default_config
@@ -33,74 +34,6 @@ from src.layers.layer_4_compare_values import gate as layer_4_gate
 from src.utils.execution import ExecutionContext
 
 
-def _run_one_layer(
-    ctx: ExecutionContext,
-    run: Callable[..., Any],
-    export: Callable[..., None],
-    report: Callable[..., None],
-    gate: Any,
-    *run_args: Any,
-) -> str:
-    """``run -> export -> report -> record -> gate.decide``, in that fixed order.
-
-    ``record`` runs only after both artifacts are on disk, so a crash during
-    ``export``/``report`` leaves the layer *unrecorded* rather than recorded in
-    ``manifest.json`` with a ``csv`` path pointing at a file that was never
-    written. Downstream layers still see this layer's result: ``record``
-    completes before this function returns, i.e. before the next layer runs.
-    """
-    result = run(*run_args)
-    export(result, ctx)
-    report(result, ctx)
-    ctx.record(result)
-    return gate.decide(result.verdict)
-
-
-def run_pipeline(ctx: ExecutionContext) -> None:
-    """Drive layers 1-4 in order, stopping early on any ``STOP`` gate decision."""
-    config = ctx.config
-
-    decision = _run_one_layer(
-        ctx, layer_1.run, layer_1.export, layer_1.report, layer_1_gate, config
-    )
-    if decision == "STOP":
-        return
-    result_1 = ctx.results["layer_1_read"]
-
-    decision = _run_one_layer(
-        ctx, layer_2.run, layer_2.export, layer_2.report, layer_2_gate, result_1, config
-    )
-    if decision == "STOP":
-        return
-    result_2 = ctx.results["layer_2_compare_columns"]
-
-    decision = _run_one_layer(
-        ctx,
-        layer_3.run,
-        layer_3.export,
-        layer_3.report,
-        layer_3_gate,
-        result_1,
-        result_2,
-        config,
-    )
-    if decision == "STOP":
-        return
-    result_3 = ctx.results["layer_3_compare_rows"]
-
-    _run_one_layer(
-        ctx,
-        layer_4.run,
-        layer_4.export,
-        layer_4.report,
-        layer_4_gate,
-        result_1,
-        result_2,
-        result_3,
-        config,
-    )
-
-
 def main(config: Any = default_config) -> int:
     """Create an execution, run the pipeline, always write the manifest, return the exit code."""
     ctx = ExecutionContext.create(config)
@@ -111,6 +44,64 @@ def main(config: Any = default_config) -> int:
         ctx.mark_crashed(f"{type(exc).__name__}: {exc}")
     ctx.write_manifest()
     return ctx.exit_code()
+
+
+def run_pipeline(ctx: ExecutionContext) -> None:
+    """Run each layer in order, stopping early on any ``STOP`` gate decision."""
+    try:
+        for module, gate in _LAYERS:
+            _run_one_layer(ctx, _LayerStage.of(module, gate))
+    except _StopPipeline:
+        pass
+
+
+def _run_one_layer(ctx: ExecutionContext, stage: _LayerStage) -> None:
+    """``run -> export -> report -> record -> gate.decide``, in that fixed order.
+
+    A layer's ``run`` receives every result recorded so far, in order, plus
+    the config (architecture.md's layer inputs table). ``record`` runs only
+    after both artifacts are on disk, so a crash during ``export``/``report``
+    leaves the layer *unrecorded* rather than pointing ``manifest.json`` at a
+    file that was never written. Raises ``_StopPipeline`` on a ``STOP``.
+    """
+    prior_results = tuple(ctx.results.values())
+    result = stage.run(*prior_results, ctx.config)
+    stage.export(result, ctx)
+    stage.report(result, ctx)
+    ctx.record(result)
+    if stage.decide(result.verdict) == "STOP":
+        raise _StopPipeline()
+
+
+@dataclass
+class _LayerStage:
+    """One layer's ``run``/``export``/``report`` phase plus its gate ``decide``."""
+
+    run: Callable[..., Any]
+    export: Callable[..., None]
+    report: Callable[..., None]
+    decide: Callable[..., str]
+
+    @classmethod
+    def of(cls, module: Any, gate: Any) -> _LayerStage:
+        """Unpack the four callables from a layer module and its gate module."""
+        return cls(module.run, module.export, module.report, gate.decide)
+
+
+#: The pipeline, in execution order, as ``(layer module, gate module)`` pairs.
+#: ``run_pipeline`` walks this table; each layer is fed the results of every
+#: layer before it (see ``_run_one_layer``). Pairs (not pre-built stages) so
+#: the callables resolve fresh each run -- tests monkeypatch e.g. ``layer_2.run``.
+_LAYERS: tuple[tuple[Any, Any], ...] = (
+    (layer_1, layer_1_gate),
+    (layer_2, layer_2_gate),
+    (layer_3, layer_3_gate),
+    (layer_4, layer_4_gate),
+)
+
+
+class _StopPipeline(Exception):
+    """Signals a ``STOP`` gate decision, unwinding ``run_pipeline`` early."""
 
 
 if __name__ == "__main__":
