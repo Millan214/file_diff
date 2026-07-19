@@ -74,10 +74,13 @@ content. Details: `.claude/docs/dashboard.md`.
     main.py                 # orchestrator + CLI
     main.html               # dashboard
     /layers
-      /layer_1_read/{read.py, gate.py}
-      /layer_2_compare_columns/{compare_columns.py, gate.py}
-      /layer_3_compare_rows/{compare_rows.py, gate.py}
-      /layer_4_compare_values/{compare_values.py, gate.py}
+      # each layer is a package: __init__.py (public surface) + logic.py
+      # (pure) + run.py (run()) + output.py (export()/report() I/O)
+      /layer_1_read/{__init__, logic, run, output}.py
+      /layer_2_compare_columns/{__init__, logic, run, output}.py
+      /layer_3_compare_rows/{__init__, logic, run, output}.py
+      # layer 4 adds equality.py (D9 matrix) + accepted.py (policy loader)
+      /layer_4_compare_values/{__init__, equality, accepted, logic, run, output}.py
     /config/config.py
     /utils/utils.py         # may split into modules, see .claude/utils/README.md
   /tests

@@ -1,4 +1,4 @@
-"""Tests for src/layers/layer_1_read (read.py + gate.py).
+"""Tests for src/layers/layer_1_read (logic.py / run.py / output.py).
 
 Covers the layer_1_read.md edge cases: missing file, undecodable file,
 incompatible encodings (D4), empty file (header-only vs literal 0 bytes),
@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.layers.layer_1_read import gate, read
+from src.layers import layer_1_read as read
 from src.utils.execution import ExecutionContext
 
 
@@ -396,21 +396,21 @@ def test_report_writes_pdf_on_failure_with_reason(read_config, fixtures_dir, tmp
     assert pdf_path.stat().st_size > 0
 
 
-def test_export_and_report_run_before_gate_on_failure(read_config, fixtures_dir, tmp_path):
-    """Architecture.md: artifacts are always written before the gate runs,
-    including on failure -- simulate the orchestrator's actual call order."""
+def test_export_and_report_run_before_stop_on_failure(read_config, fixtures_dir, tmp_path):
+    """Architecture.md: artifacts are always written before the pipeline
+    decides to stop, including on failure -- simulate the orchestrator's
+    actual call order."""
     config = read_config(fixtures_dir / "identical_left.csv", tmp_path / "missing.csv")
     ctx = ExecutionContext.create(config)
     result = read.run(config)
 
     read.export(result, ctx)
     read.report(result, ctx)
-    decision = gate.decide(result.verdict)
 
     assert ctx.csv_path(result.name).is_file()
     assert ctx.txt_path(result.name).is_file()
     assert ctx.pdf_path(result.name).is_file()
-    assert decision == "STOP"
+    assert result.verdict == "failed"  # main.run_pipeline halts here
 
 
 def test_manifest_integration_uses_layer1_files_extra(read_config, fixtures_dir):
@@ -429,17 +429,3 @@ def test_manifest_integration_uses_layer1_files_extra(read_config, fixtures_dir)
     assert manifest["exit_code"] == 0
 
 
-# ---------------------------------------------------------------------------
-# gate
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "verdict,expected",
-    [
-        ("success", "CONTINUE"),
-        ("failed", "STOP"),
-    ],
-)
-def test_gate_decide(verdict, expected):
-    assert gate.decide(verdict) == expected

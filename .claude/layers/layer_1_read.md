@@ -11,8 +11,8 @@ Load both input files, detect encodings, hard-gate the pipeline.
 5. Success → `LayerResult` with `df_left`, `df_right`, encodings, row/col counts.
 
 Pure-function decomposition: `check_exists`, `detect_encoding`,
-`normalize_encoding`, `load_csv` — composed by `read.py`; no I/O outside
-`load_csv`'s reads.
+`normalize_encoding`, `load_csv` — in `logic.py`, composed by `run.py`; no I/O
+outside `load_csv`'s reads (and `output.py`'s export/report).
 
 ## Exports (CSV/TXT)
 One row per file: `file, path, exists, encoding, encoding_normalized, rows, columns, status`.

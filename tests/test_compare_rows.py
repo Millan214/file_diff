@@ -1,4 +1,4 @@
-"""Tests for src/layers/layer_3_compare_rows (compare_rows.py + gate.py).
+"""Tests for src/layers/layer_3_compare_rows (logic.py / run.py / output.py).
 
 Layer 1 and layer 2 are being built in parallel on separate branches, so
 their LayerResults are hand-constructed here per the fixed interface
@@ -13,7 +13,7 @@ from datetime import datetime
 import pandas as pd
 import pytest
 
-from src.layers.layer_3_compare_rows.compare_rows import (
+from src.layers.layer_3_compare_rows import (
     classify_keys,
     export,
     find_duplicates,
@@ -21,7 +21,6 @@ from src.layers.layer_3_compare_rows.compare_rows import (
     row_verdict,
     run,
 )
-from src.layers.layer_3_compare_rows.gate import decide
 from src.utils.execution import ExecutionContext, LayerResult
 from src.utils.keys import unique_keys
 
@@ -324,18 +323,6 @@ def test_run_failed_when_inner_empty(make_config, tmp_path):
 
 
 # --------------------------------------------------------------------------
-# gate.decide
-# --------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "verdict,expected", [("success", "CONTINUE"), ("completed-with-differences", "CONTINUE"), ("failed", "STOP")]
-)
-def test_gate_decide(verdict, expected):
-    assert decide(verdict) == expected
-
-
-# --------------------------------------------------------------------------
 # export() -- real CSV/TXT via ExecutionContext
 # --------------------------------------------------------------------------
 
@@ -401,8 +388,8 @@ def test_export_writes_artifacts_even_on_failed_verdict(make_config):
     assert ctx.csv_path(result.name).exists()
     assert ctx.txt_path(result.name).exists()
 
-    # Gate runs only after artifacts exist.
-    assert decide(result.verdict) == "STOP"
+    # The pipeline halts on this verdict only after artifacts exist.
+    assert result.verdict == "failed"
 
 
 # --------------------------------------------------------------------------
